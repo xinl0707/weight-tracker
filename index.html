@@ -657,6 +657,25 @@
                 </div>
             </div>
             <div class="card">
+                <div class="card-title"><span class="icon" style="background:rgba(59,130,246,0.15);">📱</span>局域网访问</div>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:8px;">
+                        <span style="font-size:13px;color:var(--text-secondary);">服务端口</span>
+                        <strong id="settings-port" style="color:var(--accent-blue);font-size:15px;">3000</strong>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:8px;">
+                        <span style="font-size:13px;color:var(--text-secondary);">局域网地址</span>
+                        <strong id="settings-lan-ip" style="color:var(--accent-green);font-size:13px;">获取中...</strong>
+                    </div>
+                    <button class="btn btn-primary" onclick="showQRCode()" style="width:100%;">📱 生成手机扫码二维码</button>
+                    <div id="qr-code-box" style="display:none;text-align:center;padding:16px;background:rgba(255,255,255,0.03);border-radius:10px;">
+                        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">用手机扫描下方二维码访问</p>
+                        <img id="qr-code-img" style="width:180px;height:180px;border-radius:8px;background:white;padding:8px;">
+                        <p id="qr-code-url" style="font-size:11px;color:var(--text-muted);margin-top:8px;word-break:break-all;"></p>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
                 <div class="card-title"><span class="icon" style="background:rgba(16,185,129,0.15);">💾</span>数据管理</div>
                 <div style="display:flex;flex-direction:column;gap:10px;">
                     <button class="btn btn-primary" onclick="exportData()" style="width:100%;">📤 导出数据（JSON 备份）</button>
@@ -1775,6 +1794,31 @@ function renderSettings() {
     document.getElementById('settings-target-date').value=s.targetDate;
     document.getElementById('settings-calorie-target').value=s.calorieTarget;
     document.getElementById('settings-bmr').value=s.bmr||'--';
+    // 获取服务器信息
+    fetchServerInfo();
+}
+var _serverInfo=null;
+function fetchServerInfo(){
+    fetch(API_BASE_URL+'/api/info').then(function(r){return r.json();}).then(function(info){
+        _serverInfo=info;
+        document.getElementById('settings-port').textContent=info.port;
+        document.getElementById('settings-lan-ip').textContent=info.lanIP+':'+info.port;
+    }).catch(function(){
+        document.getElementById('settings-lan-ip').textContent='未连接服务器';
+    });
+}
+function showQRCode(){
+    if(!_serverInfo){
+        myAlert('正在获取服务器信息，请稍后再试','提示','⏳');
+        fetchServerInfo();
+        return;
+    }
+    var url=_serverInfo.url;
+    // 使用免费 QR Code API 生成二维码
+    var qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=200x200&data='+encodeURIComponent(url);
+    document.getElementById('qr-code-img').src=qrUrl;
+    document.getElementById('qr-code-url').textContent=url;
+    document.getElementById('qr-code-box').style.display='block';
 }
 function saveSettings() {
     appData.settings.name=document.getElementById('settings-name').value;

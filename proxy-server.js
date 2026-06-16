@@ -195,6 +195,25 @@ var server = http.createServer(function(req, res) {
         return;
     }
 
+    // 服务器信息（端口 + 局域网 IP）
+    if (pathname === '/api/info' && req.method === 'GET') {
+        var os = require('os');
+        var interfaces = os.networkInterfaces();
+        var lanIP = 'localhost';
+        for (var name in interfaces) {
+            for (var i = 0; i < interfaces[name].length; i++) {
+                var iface = interfaces[name][i];
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    lanIP = iface.address;
+                    break;
+                }
+            }
+            if (lanIP !== 'localhost') break;
+        }
+        sendJSON(res, 200, { port: PORT, lanIP: lanIP, url: 'http://' + lanIP + ':' + PORT });
+        return;
+    }
+
     // 图片识别
     if (pathname === '/api/recognize' && req.method === 'POST') {
         readBody(req).then(function(body) {
