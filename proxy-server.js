@@ -298,18 +298,24 @@ var server = http.createServer(function(req, res) {
         return;
     }
 
-    // 文本分析
+    // 文本分析（支持单条prompt和对话messages数组）
     if (pathname === '/api/analyze' && req.method === 'POST') {
         readBody(req).then(function(body) {
-            if (!body.prompt) {
-                sendJSON(res, 400, { error: 'Missing prompt' });
+            var messages;
+            if (body.messages) {
+                // 对话模式：直接使用传入的消息数组
+                messages = body.messages;
+            } else if (body.prompt) {
+                // 单条模式
+                messages = [
+                    { role: 'system', content: '你是专业的健身教练和营养师，名叫"MIMO"。请用中文回答，语气亲切专业。使用 Markdown 格式输出，包括标题(##/###)、粗体(**)、列表(-/1.)等，让内容层次分明、易于阅读。不要在行与行之间添加多余的空行或空格。' },
+                    { role: 'user', content: body.prompt }
+                ];
+            } else {
+                sendJSON(res, 400, { error: 'Missing prompt or messages' });
                 return;
             }
-            var messages = [
-                { role: 'system', content: '你是专业的健身教练和营养师，名叫"MIMO"。请用中文回答，语气亲切专业。使用 Markdown 格式输出，包括标题(##/###)、粗体(**)、列表(-/1.)等，让内容层次分明、易于阅读。不要在行与行之间添加多余的空行或空格。' },
-                { role: 'user', content: body.prompt }
-            ];
-            console.log('[Analyze] Analysis request...');
+            console.log('[Analyze] Request (' + (body.messages ? 'chat' : 'single') + ')...');
             return callMiMO(messages);
         }).then(function(result) {
             if (result) {
