@@ -247,7 +247,6 @@ function callMiMOStream(messages, res) {
     req.write(body);
     req.end();
 }
-}
 
 // ============ 路由处理 ============
 var server = http.createServer(function(req, res) {
