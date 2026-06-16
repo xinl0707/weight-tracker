@@ -2,17 +2,15 @@
 
 ## 快速开始
 
-### 1. 打开主程序
-直接双击 `index.html` 文件，即可在浏览器中打开。
+### 一键启动（推荐）
+双击 `start.bat`，自动启动服务器并打开浏览器。
 
-### 2. 启动 AI 识图功能（可选）
-如果你需要使用截图自动识别功能：
+### 手动打开
+直接双击 `index.html` 文件，即可在浏览器中打开（AI 识图功能不可用）。
 
+### 命令行启动
 ```bash
-# 在终端中进入项目目录
-cd D:\桌面\first-cc
-
-# 启动代理服务器
+cd weight-tracker
 node proxy-server.js
 ```
 
@@ -63,9 +61,11 @@ node proxy-server.js
 ## 文件说明
 
 ```
-first-cc/
+weight-tracker/
 ├── index.html          # 主程序（双击打开）
-├── proxy-server.js     # AI 识图代理服务器（可选）
-├── README.md           # 使用说明
-└── CLAUDE.md           # Claude Code 配置
+├── proxy-server.js     # AI 识图代理服务器
+├── start.bat           # 一键启动脚本
+├── .env                # API 密钥配置
+├── app-data.json       # 服务器端数据存储
+└── README.md           # 使用说明
 ```

@@ -3,6 +3,9 @@ chcp 65001 >nul 2>nul
 title Xinlu Weight Loss Plan
 color 0B
 
+:: 切换到脚本所在目录
+cd /d "%~dp0"
+
 echo.
 echo  ========================================
 echo     Xinlu Weight Loss Plan - Starting

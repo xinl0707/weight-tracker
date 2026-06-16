@@ -10,3 +10,9 @@
 ## 项目说明
 
 本项目用于记录和追踪减肥计划。
+
+## 文件结构
+
+- `weight-tracker/` — 减肥追踪应用（index.html、proxy-server.js、start.bat 等）
+- `pomodoro-app/` — 番茄钟应用
+- 启动方式：双击 `weight-tracker/start.bat`
