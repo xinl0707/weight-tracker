@@ -184,6 +184,71 @@ function callMiMO(messages) {
     });
 }
 
+// 流式输出版本
+function callMiMOStream(messages, res) {
+    var body = JSON.stringify({
+        model: MIMO_MODEL,
+        messages: messages,
+        max_tokens: 2048,
+        temperature: 0.7,
+        stream: true
+    });
+
+    var parsed = new URL(MIMO_API_URL);
+    var options = {
+        hostname: parsed.hostname,
+        port: 443,
+        path: parsed.pathname,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'api-key': MIMO_API_KEY,
+            'Content-Length': Buffer.byteLength(body)
+        }
+    };
+
+    var req = https.request(options, function(apiRes) {
+        var buffer = '';
+        apiRes.on('data', function(chunk) {
+            buffer += chunk.toString();
+            // 处理 SSE 格式的流式数据
+            var lines = buffer.split('\n');
+            buffer = lines.pop(); // 保留未完成的行
+            lines.forEach(function(line) {
+                line = line.trim();
+                if (line.indexOf('data: ') === 0) {
+                    var data = line.slice(6);
+                    if (data === '[DONE]') {
+                        res.write('data: [DONE]\n\n');
+                        return;
+                    }
+                    try {
+                        var json = JSON.parse(data);
+                        var content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
+                        if (content) {
+                            res.write('data: ' + JSON.stringify({content: content}) + '\n\n');
+                        }
+                    } catch(e) {}
+                }
+            });
+        });
+        apiRes.on('end', function() {
+            res.write('data: [DONE]\n\n');
+            res.end();
+        });
+    });
+
+    req.on('error', function(e) {
+        res.write('data: ' + JSON.stringify({error: e.message}) + '\n\n');
+        res.write('data: [DONE]\n\n');
+        res.end();
+    });
+    req.setTimeout(60000, function() { req.destroy(); });
+    req.write(body);
+    req.end();
+}
+}
+
 // ============ 路由处理 ============
 var server = http.createServer(function(req, res) {
     setCORS(res);
@@ -230,6 +295,27 @@ var server = http.createServer(function(req, res) {
             if (lanIP !== 'localhost') break;
         }
         sendJSON(res, 200, { port: PORT, lanIP: lanIP, url: 'http://' + lanIP + ':' + PORT });
+        return;
+    }
+
+    // 流式对话（支持 AI 计划生成器的实时输出）
+    if (pathname === '/api/chat/stream' && req.method === 'POST') {
+        readBody(req).then(function(body) {
+            if (!body.messages) {
+                sendJSON(res, 400, { error: 'Missing messages' });
+                return;
+            }
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Access-Control-Allow-Origin': '*'
+            });
+            console.log('[Chat Stream] Streaming response...');
+            callMiMOStream(body.messages, res);
+        }).catch(function(err) {
+            sendJSON(res, 500, { error: err.message });
+        });
         return;
     }
 

@@ -4,6 +4,9 @@
 # 环境变量（含 API Key）
 .env
 
+# 服务器数据文件
+app-data.json
+
 # 系统文件
 Thumbs.db
 Desktop.ini

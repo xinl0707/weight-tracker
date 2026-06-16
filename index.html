@@ -364,13 +364,19 @@
         .toast-hint { font-size: 11px; color: var(--text-muted); margin-top: 12px; }
 
         /* AI 计划对话框 */
-        .planner-msg { max-width:85%; padding:10px 14px; border-radius:12px; font-size:13px; line-height:1.6; }
+        .planner-msg { max-width:88%; padding:10px 14px; border-radius:12px; font-size:13px; line-height:1.7; }
         .planner-msg.ai { background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.15); align-self:flex-start; color:var(--text-secondary); }
         .planner-msg.user { background:rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.2); align-self:flex-end; color:var(--text-primary); }
         .planner-msg.system { background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.15); align-self:center; text-align:center; font-size:12px; color:var(--accent-green); }
-        .planner-msg .plan-preview { margin-top:10px; padding:10px; background:rgba(0,0,0,0.2); border-radius:8px; font-size:12px; }
-        .planner-msg .plan-preview .day-item { padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
-        .planner-msg .plan-preview .day-item:last-child { border-bottom:none; }
+        .planner-msg strong { color:var(--text-primary); }
+        .planner-msg code { background:rgba(255,255,255,0.08); padding:1px 4px; border-radius:3px; font-size:12px; }
+        .planner-msg pre { background:rgba(0,0,0,0.3); padding:8px 10px; border-radius:6px; overflow-x:auto; margin:6px 0; font-size:12px; }
+        /* 打字动画 */
+        .typing-dots { display:flex; gap:4px; }
+        .typing-dots span { width:6px; height:6px; border-radius:50%; background:var(--accent-blue); animation:typingBounce 1.4s infinite ease-in-out; }
+        .typing-dots span:nth-child(2) { animation-delay:0.2s; }
+        .typing-dots span:nth-child(3) { animation-delay:0.4s; }
+        @keyframes typingBounce { 0%,80%,100%{transform:scale(0.6);opacity:0.3;} 40%{transform:scale(1);opacity:1;} }
         /* 食物输入行 */
         .food-item-row .input { font-size: 13px; padding: 8px 10px; }
     </style>
@@ -890,27 +896,30 @@
 
 <!-- ====== AI 计划生成对话框 ====== -->
 <div class="modal-overlay" id="modal-ai-planner" style="z-index:250;">
-    <div class="modal" style="max-width:600px;height:80vh;display:flex;flex-direction:column;padding:0;">
-        <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+    <div class="modal" style="max-width:650px;height:85vh;display:flex;flex-direction:column;padding:0;">
+        <div style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
             <div style="display:flex;align-items:center;gap:10px;">
                 <span style="font-size:20px;">🤖</span>
                 <div>
                     <div style="font-size:15px;font-weight:600;">AI 运动计划生成器</div>
-                    <div style="font-size:11px;color:var(--text-muted);">根据你的数据智能生成个性化计划</div>
+                    <div style="font-size:11px;color:var(--text-muted);">对话式设计，满意后一键导入</div>
                 </div>
             </div>
-            <button class="modal-close" onclick="closeAIPlanner()">✕</button>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button class="btn btn-primary btn-sm" onclick="requestAIPlanGeneration()" title="让 AI 生成完整计划" style="padding:6px 12px;">📋 生成计划</button>
+                <button class="modal-close" onclick="closeAIPlanner()">✕</button>
+            </div>
         </div>
         <!-- 对话消息区 -->
         <div id="ai-planner-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
         </div>
         <!-- 底部输入区 -->
         <div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,0.06);flex-shrink:0;">
-            <div style="display:flex;gap:8px;margin-bottom:8px;">
-                <input class="input" id="ai-planner-input" placeholder="告诉 AI 你的需求..." style="flex:1;" onkeydown="if(event.key==='Enter')sendPlannerMessage()">
+            <div style="display:flex;gap:8px;">
+                <input class="input" id="ai-planner-input" placeholder="告诉 AI 你的需求..." style="flex:1;" onkeydown="if(event.key==='Enter'&&!event.shiftKey)sendPlannerMessage()">
                 <button class="btn btn-primary btn-sm" onclick="sendPlannerMessage()">发送</button>
             </div>
-            <button class="btn btn-primary" onclick="generateFinalPlan()" id="btn-generate-plan" style="width:100%;display:none;">
+            <button class="btn btn-primary" onclick="generateFinalPlan()" id="btn-generate-plan" style="width:100%;margin-top:8px;display:none;">
                 ✅ 确认并导入此计划
             </button>
         </div>
@@ -1555,118 +1564,196 @@ function exportExerciseRecords(){
     myAlert('运动记录已导出','导出成功','✅');
 }
 /* ====== AI 计划生成器 ====== */
-var _plannerHistory=[]; // 对话历史
-var _plannerPlan=null; // 生成的计划
+var _plannerHistory=[];
+var _plannerPlan=null;
+var _plannerStreaming=false;
+
+function getCurrentPlanSummary(){
+    // 读取当前 WEEKLY_PLAN 生成摘要
+    var dayNames={1:'周一',2:'周二',3:'周三',4:'周四',5:'周五',6:'周六',0:'周日'};
+    var lines=[];
+    [1,2,3,4,5,6,0].forEach(function(d){
+        var p=WEEKLY_PLAN[d];
+        if(p) lines.push(dayNames[d]+': '+p.name+' | '+(p.items||[]).join(', '));
+    });
+    return lines.join('\n');
+}
 
 function openAIPlanner(){
     _plannerHistory=[];
     _plannerPlan=null;
+    _plannerStreaming=false;
     document.getElementById('ai-planner-messages').innerHTML='';
     document.getElementById('ai-planner-input').value='';
     document.getElementById('btn-generate-plan').style.display='none';
+    document.getElementById('btn-generate-plan').disabled=false;
     openModal('modal-ai-planner');
-    // 发送初始消息：读取用户数据并问候
+
+    // 读取当前计划和用户数据
     var s=appData.settings;
     var lw=getLatestWeight();
     var lost=parseFloat((s.startWeight-(lw?lw.weight:s.startWeight)).toFixed(1));
-    var weekExercises=appData.exercises.length;
+    var currentPlan=getCurrentPlanSummary();
+
     var initMsg='你好！我是你的 AI 运动计划顾问 👋\n\n'+
-        '我已读取了你的数据：\n'+
+        '**我已读取了你的当前数据：**\n'+
         '- 当前体重: '+(lw?lw.weight+'kg':'未记录')+'\n'+
         '- 目标体重: '+s.targetWeight+'kg\n'+
-        '- 已减重: '+lost+'kg\n'+
-        '- 历史运动记录: '+weekExercises+' 次\n'+
-        '- 晨间训练: 核心训练+盆底肌+深蹲（每日必做）\n'+
-        '- 限制: 不去健身房，不做力量训练\n\n'+
-        '请告诉我你对运动计划有什么偏好或要求？\n'+
-        '比如：想侧重什么运动？每周运动几天？有什么特别想做或不想做的？';
+        '- 已减重: '+lost+'kg\n\n'+
+        '**当前运动计划：**\n'+
+        '```\n'+currentPlan+'\n```\n\n'+
+        '**每日晨间训练（固定）：**\n'+
+        MORNING_PLAN.map(function(m){return '- '+m.name}).join('\n')+'\n\n'+
+        '请告诉我你想怎么调整？比如想侧重什么运动、每周运动几天等。\n'+
+        '调整满意后，点击右侧 📋 按钮即可一键生成并导入计划。';
+
     addPlannerMessage('ai',initMsg);
-    _plannerHistory.push({role:'user',content:'用户打开了AI计划生成器，请读取数据并问候。'});
+    _plannerHistory.push({role:'user',content:'用户打开了AI运动计划生成器。请读取当前计划数据，然后问候用户并等待需求。'});
     _plannerHistory.push({role:'assistant',content:initMsg});
 }
-function closeAIPlanner(){closeModal('modal-ai-planner');}
+
+function closeAIPlanner(){
+    _plannerStreaming=false;
+    closeModal('modal-ai-planner');
+}
+
 function addPlannerMessage(type,text){
     var div=document.createElement('div');
     div.className='planner-msg '+type;
-    div.innerHTML=text.replace(/\n/g,'<br>');
+    // AI 消息支持 Markdown
+    if(type==='ai'){
+        div.innerHTML=renderMarkdown(text);
+    }else{
+        div.innerHTML=text.replace(/\n/g,'<br>');
+    }
     document.getElementById('ai-planner-messages').appendChild(div);
     div.scrollIntoView({behavior:'smooth'});
+    return div;
 }
+
+function addPlannerTyping(){
+    var div=document.createElement('div');
+    div.className='planner-msg ai';
+    div.id='planner-typing';
+    div.innerHTML='<div style="display:flex;align-items:center;gap:8px;"><div class="typing-dots"><span></span><span></span><span></span></div><span style="font-size:12px;color:var(--text-muted);">AI 正在思考...</span></div>';
+    document.getElementById('ai-planner-messages').appendChild(div);
+    div.scrollIntoView({behavior:'smooth'});
+    return div;
+}
+
 async function sendPlannerMessage(){
+    if(_plannerStreaming) return;
     var input=document.getElementById('ai-planner-input');
     var text=input.value.trim();
-    if(!text)return;
+    if(!text) return;
     input.value='';
     addPlannerMessage('user',text);
     _plannerHistory.push({role:'user',content:text});
-    // 显示 AI 正在输入
-    var typing=document.createElement('div');
-    typing.className='planner-msg ai';
-    typing.innerHTML='<span style="opacity:0.5;">AI 正在思考...</span>';
-    document.getElementById('ai-planner-messages').appendChild(typing);
-    typing.scrollIntoView({behavior:'smooth'});
+    await streamAIResponse();
+}
+
+async function streamAIResponse(){
+    _plannerStreaming=true;
+    var typingEl=addPlannerTyping();
+    var msgDiv=document.createElement('div');
+    msgDiv.className='planner-msg ai';
+    msgDiv.style.display='none';
+    document.getElementById('ai-planner-messages').appendChild(msgDiv);
+    var fullText='';
+
+    var s=appData.settings;
+    var lw=getLatestWeight();
+    var currentPlan=getCurrentPlanSummary();
+    var context='你是一个专业的运动计划顾问，名叫MIMO。'+
+        '用户信息：身高'+s.height+'cm，体重'+(lw?lw.weight:'未知')+'kg，'+
+        '目标'+s.targetWeight+'kg。\n'+
+        '当前运动计划：\n'+currentPlan+'\n\n'+
+        '每日晨间训练（固定，用户可调整内容但框架不变）：'+
+        MORNING_PLAN.map(function(m){return m.name}).join('、')+'\n\n'+
+        '【重要规则】\n'+
+        '1. 不要反复询问"是否可以生成计划"，直接正常对话\n'+
+        '2. 用户说的任何需求你都要直接回应并给建议\n'+
+        '3. 输出使用 Markdown 格式（标题、粗体、列表等）\n'+
+        '4. 如果用户没有特别要求，你可以主动给出一份推荐方案\n'+
+        '5. 用中文回答，语气亲切专业';
+
+    var messages=[{role:'system',content:context}];
+    _plannerHistory.forEach(function(h){messages.push(h);});
+
     try{
-        var s=appData.settings;
-        var lw=getLatestWeight();
-        var context='你是一个专业的运动计划顾问。用户信息：'+
-            '身高'+s.height+'cm，体重'+(lw?lw.weight:'未知')+'kg，'+
-            '目标'+s.targetWeight+'kg，已减重'+parseFloat((s.startWeight-(lw?lw.weight:s.startWeight)).toFixed(1))+'kg。'+
-            '约束：不去健身房，不做力量训练，以有氧和自重训练为主。'+
-            '晨间训练（每天必做）：核心训练15分钟+盆底肌训练10分钟+深蹲3组×15次。\n\n'+
-            '你的任务是：1.先了解用户需求 2.推荐合适的运动组合 3.最后生成周一到周日的完整计划。\n'+
-            '当你准备好生成最终计划时，在回复末尾加上【可以生成计划】这6个字。\n'+
-            '生成计划时，按以下JSON格式输出：\n'+
-            '{"plan":{"1":{"name":"周一名称","items":["运动1","运动2"]},"2":{...},"3":{...},"4":{...},"5":{...},"6":{...},"0":{"name":"周日名称","items":["休息"]}}}'+
-            '\n\n对话历史：';
-        var messages=[{role:'system',content:context}];
-        _plannerHistory.forEach(function(h){messages.push(h);});
-        var resp=await fetch(API_BASE_URL+'/api/analyze',{
+        var resp=await fetch(API_BASE_URL+'/api/chat/stream',{
             method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({messages:messages})
         });
-        var result=await resp.json();
-        var reply=result.content||'抱歉，我暂时无法回复。';
-        typing.remove();
-        addPlannerMessage('ai',reply);
-        _plannerHistory.push({role:'assistant',content:reply});
-        // 检查是否包含计划数据
-        if(reply.indexOf('【可以生成计划】')>-1){
-            var planMatch=reply.match(/\{[\s\S]*"plan"[\s\S]*\}/);
+        var reader=resp.body.getReader();
+        var decoder=new TextDecoder();
+        var buffer='';
+
+        while(true){
+            var done,value;
+            try{({done,value}=await reader.read());}catch(e){break;}
+            if(done) break;
+            buffer+=decoder.decode(value,{stream:true});
+            var lines=buffer.split('\n');
+            buffer=lines.pop();
+            for(var i=0;i<lines.length;i++){
+                var line=lines[i].trim();
+                if(line.indexOf('data: ')===0){
+                    var data=line.slice(6);
+                    if(data==='[DONE]') continue;
+                    try{
+                        var parsed=JSON.parse(data);
+                        if(parsed.error){fullText+='\n❌ '+parsed.error;}
+                        else if(parsed.content){fullText+=parsed.content;}
+                    }catch(e){}
+                }
+            }
+            // 实时更新显示
+            if(fullText){
+                typingEl.style.display='none';
+                msgDiv.style.display='block';
+                msgDiv.innerHTML=renderMarkdown(fullText);
+                msgDiv.scrollIntoView({behavior:'smooth'});
+            }
+        }
+        if(fullText){
+            _plannerHistory.push({role:'assistant',content:fullText});
+            // 检查是否包含计划JSON
+            var planMatch=fullText.match(/```json\s*([\s\S]*?)```/) || fullText.match(/\{[\s\S]*"plan"[\s\S]*\}/);
             if(planMatch){
                 try{
-                    var planData=JSON.parse(planMatch[0]);
-                    _plannerPlan=planData.plan;
-                    document.getElementById('btn-generate-plan').style.display='block';
-                    // 显示计划预览
-                    var preview='<div class="plan-preview">';
-                    var dayNames={1:'周一',2:'周二',3:'周三',4:'周四',5:'周五',6:'周六',0:'周日'};
-                    [1,2,3,4,5,6,0].forEach(function(d){
-                        if(_plannerPlan[d]){
-                            preview+='<div class="day-item"><strong>'+dayNames[d]+'</strong> - '+_plannerPlan[d].name+
-                                '<br><span style="color:var(--text-muted);">'+(_plannerPlan[d].items||[]).join(' · ')+'</span></div>';
-                        }
-                    });
-                    preview+='</div>';
-                    addPlannerMessage('system','✅ 计划已生成！点击下方按钮导入');
-                    var previewMsg=document.createElement('div');
-                    previewMsg.className='planner-msg ai';
-                    previewMsg.innerHTML='📋 以下是生成的计划：'+preview;
-                    document.getElementById('ai-planner-messages').appendChild(previewMsg);
-                    previewMsg.scrollIntoView({behavior:'smooth'});
+                    var planStr=planMatch[1]||planMatch[0];
+                    var planData=JSON.parse(planStr);
+                    if(planData.plan){
+                        _plannerPlan=planData.plan;
+                        document.getElementById('btn-generate-plan').style.display='block';
+                    }
                 }catch(e){}
             }
         }
     }catch(err){
-        typing.remove();
-        addPlannerMessage('ai','❌ 出错了: '+err.message+'<br>请重试或告诉我你的需求');
+        typingEl.remove();
+        msgDiv.remove();
+        addPlannerMessage('ai','❌ 出错了: '+err.message);
     }
+    typingEl.remove();
+    _plannerStreaming=false;
 }
+
+// 点击📋按钮：让 AI 生成最终计划
+async function requestAIPlanGeneration(){
+    if(_plannerStreaming) return;
+    addPlannerMessage('user','📋 请根据我们的对话，生成完整的周一到周日运动计划。');
+    _plannerHistory.push({role:'user',content:'请生成完整的7天运动计划。输出格式：```json\n{"plan":{"1":{"name":"计划名","items":["运动1","运动2"]},...}}\n```\n其中 key 1=周一,2=周二,...,6=周六,0=周日。'});
+    await streamAIResponse();
+}
+
+// 确认导入计划
 function generateFinalPlan(){
     if(!_plannerPlan){
-        myAlert('还没有生成计划，请先与 AI 对话','提示','📝');
+        myAlert('还没有生成计划，请先点击 📋 按钮让 AI 生成','提示','📝');
         return;
     }
-    // 转换为 WEEKLY_PLAN 格式并导入
     var icons={1:'🏃',2:'🚶',3:'🏃',4:'🧘',5:'🏃',6:'🚶',0:'🌿'};
     Object.keys(_plannerPlan).forEach(function(d){
         var day=_plannerPlan[d];
