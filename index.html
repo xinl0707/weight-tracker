@@ -895,7 +895,7 @@
 </div>
 
 <!-- ====== AI 计划生成对话框 ====== -->
-<div class="modal-overlay" id="modal-ai-planner" style="z-index:250;">
+<div class="modal-overlay" id="modal-ai-planner" data-no-overlay-close style="z-index:250;">
     <div class="modal" style="max-width:750px;height:90vh;display:flex;flex-direction:column;padding:0;">
         <div style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
             <div style="display:flex;align-items:center;gap:10px;">
@@ -947,8 +947,17 @@ var STORAGE_KEY = 'weightloss_tracker_v2';
 /* ====== 公共常量 ====== */
 var MEAL_LABELS = {breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍪 加餐'};
 var MEAL_LABELS_SHORT = {breakfast:'早餐',lunch:'午餐',dinner:'晚餐',snack:'加餐'};
-var EXERCISE_LABELS = {running:'🏃 跑步',core:'💪 核心训练',squat:'🦵 深蹲',pelvic:'🧘 盆底肌',walk:'🚶 散步',other:'🏃 其他'};
-var EXERCISE_LABELS_SHORT = {running:'跑步',core:'核心训练',squat:'深蹲',pelvic:'盆底肌',walk:'散步',other:'其他'};
+var EXERCISE_TYPES = {
+    running: {icon:'🏃',label:'跑步',shortLabel:'跑步',keywords:/跑|慢跑|快跑|冲刺|间歇跑/},
+    core:    {icon:'💪',label:'核心训练',shortLabel:'核心训练',keywords:/核心|卷腹|平板|仰卧|俯卧撑|腹肌/},
+    squat:   {icon:'🦵',label:'深蹲',shortLabel:'深蹲',keywords:/深蹲|蹲起|弓步/},
+    pelvic:  {icon:'🧘',label:'盆底肌',shortLabel:'盆底肌',keywords:/盆底|凯格尔/},
+    walk:    {icon:'🚶',label:'散步',shortLabel:'散步',keywords:/走|散步|快走|徒步/},
+    other:   {icon:'🏃',label:'其他',shortLabel:'其他',keywords:null}
+};
+// 兼容旧引用
+var EXERCISE_LABELS={};var EXERCISE_LABELS_SHORT={};
+Object.keys(EXERCISE_TYPES).forEach(function(k){EXERCISE_LABELS[k]=EXERCISE_TYPES[k].icon+' '+EXERCISE_TYPES[k].label;EXERCISE_LABELS_SHORT[k]=EXERCISE_TYPES[k].shortLabel;});
 
 /* ====== Helper 函数 ====== */
 function emptyState(msg){return '<p style="text-align:center;color:var(--text-muted);padding:20px;">'+msg+'</p>';}
@@ -961,6 +970,11 @@ function formatWeightDiff(diff){
 function foodResultHtml(d,idx){
     return '<div data-calc-idx="'+idx+'" style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:4px 8px;background:rgba(16,185,129,0.06);border-radius:6px;font-size:11px;margin-bottom:4px;">'+
         '<span>🔥 '+(d.calories||0)+'kcal</span><span>🥩 蛋白'+(d.protein||0)+'g</span><span>🌾 碳水'+(d.carbs||0)+'g</span><span>🧈 脂肪'+(d.fat||0)+'g</span></div>';
+}
+function extractJSON(text,pattern,fallback){
+    var match=text.match(pattern);
+    if(!match) return fallback;
+    try{return JSON.parse(match[0]);}catch(e){return fallback;}
 }
 
 var DEFAULT_SETTINGS = {
@@ -1465,11 +1479,11 @@ function recordPlanItem(type,name,defaultDuration){
 // 记录自定义计划项
 function autoDetectExerciseType(desc){
     desc=(desc||'').toLowerCase();
-    if(/跑|慢跑|快跑|跑步|冲刺|间歇跑/.test(desc)) return 'running';
-    if(/核心|卷腹|平板|仰卧|俯卧撑|腹肌/.test(desc)) return 'core';
-    if(/深蹲|蹲/.test(desc)) return 'squat';
-    if(/盆底|凯格尔/.test(desc)) return 'pelvic';
-    if(/走|散步|快走|徒步/.test(desc)) return 'walk';
+    var keys=Object.keys(EXERCISE_TYPES);
+    for(var i=0;i<keys.length;i++){
+        var t=EXERCISE_TYPES[keys[i]];
+        if(t.keywords && t.keywords.test(desc)) return keys[i];
+    }
     return 'other';
 }
 function recordPlanItemCustom(desc){
@@ -1576,6 +1590,7 @@ function exportExerciseRecords(){
 var _plannerHistory=[];
 var _plannerPlan=null;
 var _plannerStreaming=false;
+var _plannerRenderPending=false;
 
 function getCurrentPlanSummary(){
     // 读取当前 WEEKLY_PLAN 生成摘要
@@ -1718,52 +1733,31 @@ async function streamAIResponse(){
                     }catch(e){}
                 }
             }
-            // 实时更新显示（只在底部附近时自动滚动）
-            if(fullText){
-                typingEl.style.display='none';
-                msgDiv.style.display='block';
-                msgDiv.innerHTML=renderMarkdown(fullText);
-                var msgContainer=document.getElementById('ai-planner-messages');
-                var isNearBottom=msgContainer.scrollHeight-msgContainer.scrollTop-msgContainer.clientHeight<150;
-                if(isNearBottom) msgContainer.scrollTop=msgContainer.scrollHeight;
+            // 实时更新显示（节流：最多每100ms渲染一次）
+            if(fullText && !_plannerRenderPending){
+                _plannerRenderPending=true;
+                requestAnimationFrame(function(){
+                    typingEl.style.display='none';
+                    msgDiv.style.display='block';
+                    msgDiv.innerHTML=renderMarkdown(fullText);
+                    var msgContainer=document.getElementById('ai-planner-messages');
+                    var isNearBottom=msgContainer.scrollHeight-msgContainer.scrollTop-msgContainer.clientHeight<150;
+                    if(isNearBottom) msgContainer.scrollTop=msgContainer.scrollHeight;
+                    _plannerRenderPending=false;
+                });
             }
         }
         if(fullText){
             _plannerHistory.push({role:'assistant',content:fullText});
-            // 尝试多种方式提取计划JSON
+            // 提取计划JSON（2种策略）
             var extracted=false;
             // 策略1：```json ... ``` 代码块
-            var codeMatch=fullText.match(/```json\s*([\s\S]*?)```/);
-            if(codeMatch){
-                try{
-                    var pd=JSON.parse(codeMatch[1]);
-                    if(pd.plan){_plannerPlan=pd.plan;extracted=true;}
-                }catch(e){}
-            }
+            var codeData=extractJSON(fullText,/```json\s*([\s\S]*?)```/,null);
+            if(codeData && codeData.plan){_plannerPlan=codeData.plan;extracted=true;}
             // 策略2：直接找 {..."plan"...} 结构
             if(!extracted){
-                var jsonMatch=fullText.match(/\{[\s\S]*"plan"[\s\S]*\}/);
-                if(jsonMatch){
-                    try{
-                        var pd2=JSON.parse(jsonMatch[0]);
-                        if(pd2.plan){_plannerPlan=pd2.plan;extracted=true;}
-                    }catch(e){}
-                }
-            }
-            // 策略3：找任何包含周一~周日的JSON对象
-            if(!extracted){
-                var allJson=fullText.match(/\{[\s\S]*\}/g);
-                if(allJson){
-                    for(var ji=0;ji<allJson.length;ji++){
-                        try{
-                            var pd3=JSON.parse(allJson[ji]);
-                            // 检查是否包含周一~周日的数据
-                            if(pd3['1']||pd3['周一']||pd3.Monday){
-                                _plannerPlan=pd3;extracted=true;break;
-                            }
-                        }catch(e){}
-                    }
-                }
+                var objData=extractJSON(fullText,/\{[\s\S]*"plan"[\s\S]*\}/,null);
+                if(objData && objData.plan){_plannerPlan=objData.plan;extracted=true;}
             }
             if(extracted){
                 document.getElementById('btn-generate-plan').style.display='block';
@@ -1803,11 +1797,7 @@ function generateFinalPlan(){
         var icon=icons[key]||'🏃';
         var name=(day.name||dayNames[key]||'休息');
         var items=day.items||day.exercises||[];
-        // 确保 items 是数组
-        if(!Array.isArray(items)){
-            if(typeof items==='string') items=items.split('\n').filter(function(s){return s.trim();});
-            else items=[];
-        }
+        if(!Array.isArray(items)) items=typeof items==='string'?items.split('\n').filter(Boolean):[];
         WEEKLY_PLAN[key]={name:icon+' '+name,icon:icon,items:items};
     });
     saveData();
@@ -1842,7 +1832,7 @@ function renderMarkdown(text) {
         var trimmed = line.trim();
 
         // 表格检测
-        if(/^\|(.+)\|$/.test(trimmed) && /\|/.test(trimmed)){
+        if(/^\|(.+)\|$/.test(trimmed)){
             var cells=trimmed.split('|').filter(function(c,i,a){return i>0&&i<a.length-1;});
             // 跳过分隔行 |---|---|
             if(/^[\|\s\-:]+$/.test(trimmed)) continue;
@@ -1871,10 +1861,10 @@ function renderMarkdown(text) {
         }
 
         // 标题
-        if(/^#### (.+)$/.test(trimmed)){html+='<div style="color:var(--text-secondary);font-weight:600;margin:6px 0 3px;font-size:13px;">'+trimmed.slice(5)+'</div>';continue;}
-        if(/^### (.+)$/.test(trimmed)){html+='<div style="color:var(--text-primary);font-weight:600;margin:8px 0 4px;font-size:14px;">'+trimmed.slice(4)+'</div>';continue;}
-        if(/^## (.+)$/.test(trimmed)){html+='<div style="color:var(--text-primary);font-weight:700;margin:10px 0 5px;font-size:15px;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:3px;">'+trimmed.slice(3)+'</div>';continue;}
-        if(/^# (.+)$/.test(trimmed)){html+='<div style="color:var(--text-primary);font-weight:700;margin:12px 0 6px;font-size:16px;">'+trimmed.slice(2)+'</div>';continue;}
+        if(/^#### (.+)$/.test(trimmed)){html+='<div style="color:var(--text-secondary);font-weight:600;margin:6px 0 3px;font-size:13px;">'+renderInlineMarkdown(trimmed.slice(5))+'</div>';continue;}
+        if(/^### (.+)$/.test(trimmed)){html+='<div style="color:var(--text-primary);font-weight:600;margin:8px 0 4px;font-size:14px;">'+renderInlineMarkdown(trimmed.slice(4))+'</div>';continue;}
+        if(/^## (.+)$/.test(trimmed)){html+='<div style="color:var(--text-primary);font-weight:700;margin:10px 0 5px;font-size:15px;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:3px;">'+renderInlineMarkdown(trimmed.slice(3))+'</div>';continue;}
+        if(/^# (.+)$/.test(trimmed)){html+='<div style="color:var(--text-primary);font-weight:700;margin:12px 0 6px;font-size:16px;">'+renderInlineMarkdown(trimmed.slice(2))+'</div>';continue;}
 
         // 分割线
         if(/^[\-\*]{3,}$/.test(trimmed)){html+='<div style="border-top:1px solid rgba(255,255,255,0.06);margin:6px 0;"></div>';continue;}
@@ -2355,10 +2345,10 @@ function renderCaloriesChart() {
 function openModal(id){document.getElementById(id).classList.add('active');}
 function closeModal(id){document.getElementById(id).classList.remove('active');}
 
-// 点击外部关闭（AI计划对话框除外）
+// 点击外部关闭（data-no-overlay-close 的除外）
 document.querySelectorAll('.modal-overlay').forEach(function(o){
     o.addEventListener('click',function(e){
-        if(e.target===this && this.id!=='modal-ai-planner') this.classList.remove('active');
+        if(e.target===this && !this.hasAttribute('data-no-overlay-close')) this.classList.remove('active');
     });
 });
 
