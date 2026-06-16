@@ -1,4 +1,6 @@
-# 项目配置 - 最高优先级
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## 语言规则（最高优先级）
 
@@ -7,12 +9,91 @@
 - 所有文档和说明使用中文
 - 除非用户明确要求使用其他语言，否则一律使用中文
 
-## 项目说明
+## 项目概述
 
-本项目用于记录和追踪减肥计划。
+个人减肥追踪应用，由用户（昕露，17 岁，175cm，目标 75.8kg→65kg）日常使用。包含体重记录、饮食记录、运动计划、AI 识别分析等功能。
 
-## 文件结构
+## 启动方式
 
-- `weight-tracker/` — 减肥追踪应用（index.html、proxy-server.js、start.bat 等）
-- `pomodoro-app/` — 番茄钟应用
-- 启动方式：双击 `weight-tracker/start.bat`
+```bash
+# 一键启动（推荐）
+双击 weight-tracker/start.bat
+
+# 手动启动
+cd weight-tracker
+node proxy-server.js
+# 然后浏览器打开 http://localhost:3000
+```
+
+启动脚本会自动杀掉端口 3000 上的旧进程、启动代理服务器、打开浏览器。服务器无心跳 60 秒后自动退出。
+
+## 架构
+
+### 仓库结构
+
+- `weight-tracker/` — 减肥追踪 Web 应用（主项目）
+- `pomodoro-app/` — 番茄钟 Electron 应用（独立项目，不相关）
+
+### weight-tracker 核心文件
+
+- **index.html** — 单文件应用（HTML + CSS + JS 全内联，约 2800 行）。所有页面、样式、逻辑都在这一个文件里
+- **proxy-server.js** — Node.js 代理服务器，解决浏览器 CORS 跨域问题，内嵌 MiMO API Key，提供静态文件服务、SSE 实时同步、数据存储
+- **start.bat** — Windows 一键启动脚本，`cd /d "%~dp0"` 确保从任何位置双击都能工作
+- **.env** — MiMO API Key 配置（`MIMO_API_KEY=sk-xxx`）
+- **app-data.json** — 服务器端数据存储（JSON），支持多设备同步
+
+### index.html 内部结构
+
+```
+<script> 从第 942 行开始
+├── 常量定义（MEAL_LABELS, EXERCISE_TYPES 等）
+├── DEFAULT_SETTINGS / DEFAULT_DATA — 数据模型默认值
+├── appData — 主数据对象（从 localStorage 加载）
+├── loadData() / saveData() — 本地持久化 + 服务器同步
+├── render*() — 各页面渲染函数（Dashboard/Diet/Exercise/Report/Settings）
+├── Chart.js 图表（体重趋势、热量柱状图、营养素堆叠图）
+├── AI 功能（图片识别、文本分析、流式对话计划生成器）
+├── 自定义弹窗系统（myAlert/myConfirm，替代浏览器原生弹窗）
+└── SSE 实时同步（多设备数据推送）
+```
+
+### 数据模型（appData）
+
+```javascript
+{
+  settings: { name, height, startWeight, targetWeight, targetDate, calorieTarget, bmr, aiProvider, aiModel },
+  weights: [{ date, weight, bmi, bodyfat, leanMass, fatMass, waterVol, waterPct, boneMineral, proteinMass, muscleMass, ... }],
+  diets: [{ date, mealType, food, calories, protein, carbs, fat, note }],
+  exercises: [{ date, type, duration, calories, desc }],
+  checklist: { [日期]: { exercise: bool } }
+}
+```
+
+### API 端点（proxy-server.js，端口 3000）
+
+| 端点 | 方法 | 功能 |
+|------|------|------|
+| `/api/recognize` | POST | MiMO 图片识别（体重/食物） |
+| `/api/analyze` | POST | MiMO 文本分析（营养计算、报告生成） |
+| `/api/chat/stream` | POST | MiMO 流式对话（SSE，AI 计划生成器） |
+| `/api/events` | GET | SSE 长连接（多设备数据实时同步） |
+| `/api/data` | GET/POST | 服务器端数据读写 |
+| `/api/health` | GET | 健康检查 |
+| `/api/info` | GET | 服务器信息（端口、局域网 IP） |
+
+### 关键技术栈
+
+- **前端**：纯 HTML/CSS/JS（无框架），Chart.js 图表
+- **后端**：Node.js 原生 http 模块（无 Express）
+- **AI**：小米 MiMO V2.5 API（`api.xiaomimimo.com`），支持视觉识别和流式对话
+- **存储**：localStorage（前端）+ app-data.json（服务器端）
+- **同步**：SSE 实时推送 + 轮询兜底
+
+## 重要约定
+
+- **单文件架构**：index.html 包含所有前端代码，修改时注意行号会偏移
+- **自定义弹窗**：所有用户提示使用 `myAlert()` / `myConfirm()`，不使用浏览器原生 `alert()` / `confirm()`
+- **弹窗确认**：`myConfirm()` 支持空格键确认，提升操作效率
+- **数据保存**：每次修改 appData 后必须调用 `saveData()`，它会同时写入 localStorage 和同步到服务器
+- **图表管理**：使用 `destroyChart()` 销毁旧图表再重建，避免 Chart.js 内存泄漏
+- **中文注释**：所有新增代码的注释必须使用中文
