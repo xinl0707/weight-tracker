@@ -843,6 +843,26 @@
 /* ====== 数据管理 ====== */
 var API_BASE_URL = 'http://localhost:3000';
 var STORAGE_KEY = 'weightloss_tracker_v2';
+
+/* ====== 公共常量 ====== */
+var MEAL_LABELS = {breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍪 加餐'};
+var MEAL_LABELS_SHORT = {breakfast:'早餐',lunch:'午餐',dinner:'晚餐',snack:'加餐'};
+var EXERCISE_LABELS = {running:'🏃 跑步',core:'💪 核心训练',squat:'🦵 深蹲',pelvic:'🧘 盆底肌',walk:'🚶 散步',other:'🏃 其他'};
+var EXERCISE_LABELS_SHORT = {running:'跑步',core:'核心训练',squat:'深蹲',pelvic:'盆底肌',walk:'散步',other:'其他'};
+
+/* ====== Helper 函数 ====== */
+function emptyState(msg){return '<p style="text-align:center;color:var(--text-muted);padding:20px;">'+msg+'</p>';}
+function formatWeightDiff(diff){
+    diff=parseFloat(diff);
+    if(diff>0) return '<span class="tag tag-red">↑ '+diff+'</span>';
+    if(diff<0) return '<span class="tag tag-green">↓ '+Math.abs(diff)+'</span>';
+    return '<span class="tag tag-blue">持平</span>';
+}
+function foodResultHtml(d,idx){
+    return '<div data-calc-idx="'+idx+'" style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:4px 8px;background:rgba(16,185,129,0.06);border-radius:6px;font-size:11px;margin-bottom:4px;">'+
+        '<span>🔥 '+(d.calories||0)+'kcal</span><span>🥩 蛋白'+(d.protein||0)+'g</span><span>🌾 碳水'+(d.carbs||0)+'g</span><span>🧈 脂肪'+(d.fat||0)+'g</span></div>';
+}
+
 var DEFAULT_SETTINGS = {
     name:'昕露', height:175, startWeight:75.8, targetWeight:65,
     targetDate:'2026-07-31', calorieTarget:1800, bmr:1653,
@@ -1084,16 +1104,16 @@ function renderRecentRecords() {
         if(w.bmr) extra+=' | 代谢: '+w.bmr+'kcal';
         all.push({icon:'⚖️',bg:'rgba(59,130,246,0.15)',title:'体重: '+w.weight+' kg',desc:w.date+' | BMI: '+(w.bmi||'--')+' | 体脂: '+(w.bodyfat||'--')+'%'+extra,date:w.date});
     });
-    var mn={breakfast:'早餐',lunch:'午餐',dinner:'晚餐',snack:'加餐'};
+    var mn=MEAL_LABELS_SHORT;
     appData.diets.slice(-5).forEach(function(d){
         all.push({icon:'🍽️',bg:'rgba(16,185,129,0.15)',title:(mn[d.mealType]||d.mealType)+': '+d.food,desc:d.date+' | '+(d.calories||0)+' kcal',date:d.date});
     });
-    var tn={running:'跑步',core:'核心训练',squat:'深蹲',pelvic:'盆底肌',walk:'散步',other:'其他'};
+    var tn=EXERCISE_LABELS_SHORT;
     appData.exercises.slice(-5).forEach(function(e){
         all.push({icon:'🏋️',bg:'rgba(245,158,11,0.15)',title:(tn[e.type]||e.type)+': '+(e.duration||0)+'分钟',desc:e.date+' | '+(e.desc||''),date:e.date});
     });
     all.sort(function(a,b){return b.date.localeCompare(a.date);});
-    if(all.length===0){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:20px;">暂无记录</p>';return;}
+    if(all.length===0){c.innerHTML=emptyState('暂无记录');return;}
     c.innerHTML=all.slice(0,8).map(function(r){
         return '<div class="list-item"><div class="list-item-left">'+
             '<div class="list-item-icon" style="background:'+r.bg+';">'+r.icon+'</div>'+
@@ -1112,7 +1132,7 @@ function renderWeightPage() {
 function renderWeightHistory() {
     var c=document.getElementById('weight-history');
     var records=[].concat(appData.weights).reverse();
-    if(records.length===0){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:20px;">暂无记录</p>';return;}
+    if(records.length===0){c.innerHTML=emptyState('暂无记录');return;}
     c.innerHTML=records.map(function(r,i){
         var idx=appData.weights.length-1-i;
         var prev=appData.weights[idx-1];
@@ -1182,9 +1202,9 @@ function renderDietPage() {
     fill.style.width=pct+'%';
     fill.style.background=pct>100?'var(--gradient-3)':'var(--gradient-2)';
 
-    var mn={breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍪 加餐'};
+    var mn=MEAL_LABELS;
     var lc=document.getElementById('diet-today-list');
-    if(td.length===0){lc.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:20px;">今天还没有饮食记录</p>';}
+    if(td.length===0){lc.innerHTML=emptyState('今天还没有饮食记录');}
     else{
         lc.innerHTML=td.map(function(d,i){
             var nutrientLine=(d.calories||0)+'kcal';
@@ -1200,10 +1220,12 @@ function renderDietPage() {
     }
     renderCaloriesChart();
 }
-function deleteDietRecord(i) {
+async function deleteDietRecord(i) {
+    var ok = await myConfirm('确定删除这条饮食记录？');
+    if(!ok) return;
     var today=getTodayStr();
     var td=appData.diets.filter(function(d){return d.date===today;});
-    if(td[i]){var gi=appData.diets.indexOf(td[i]);if(gi>-1){appData.diets.splice(gi,1);saveData();renderDietPage();renderDashboard();}}
+    if(td[i]){var gi=appData.diets.indexOf(td[i]);if(gi>-1){appData.diets.splice(gi,1);saveData();renderDietPage();}}
 }
 
 /* ====== 运动页面 ====== */
@@ -1270,7 +1292,6 @@ function showDayDetail(dow) {
     // 当日运动计划模块
     html+='<div class="plan-block exercise"><h4>'+plan.name+'</h4><div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">';
     plan.items.forEach(function(item,idx){
-        var key='ex_'+dow+'_'+idx;
         var recorded=todayExercises.some(function(e){return e.desc&&e.desc.indexOf(item)>-1;});
         html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:8px;background:'+(recorded?'rgba(16,185,129,0.1)':'rgba(255,255,255,0.03)')+';">'+
             '<span style="font-size:13px;color:'+(recorded?'var(--accent-green)':'var(--text-secondary)')+';">'+(recorded?'✅ ':'')+item+'</span>'+
@@ -1307,15 +1328,11 @@ function recordPlanItemCustom(desc){
     document.getElementById('exercise-desc').value=desc;
     openModal('modal-record-exercise');
 }
-// 快速记录（保留兼容）
-function quickRecordExercise(type,desc,duration){
-    recordPlanItem(type,desc,duration);
-}
 function renderExerciseHistory() {
     var c=document.getElementById('exercise-history');
     var records=[].concat(appData.exercises).reverse();
-    var tn={running:'🏃 跑步',core:'💪 核心训练',squat:'🦵 深蹲',pelvic:'🧘 盆底肌',walk:'🚶 散步',other:'🏃 其他'};
-    if(records.length===0){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:20px;">暂无运动记录</p>';return;}
+    var tn=EXERCISE_LABELS;
+    if(records.length===0){c.innerHTML=emptyState('暂无运动记录');return;}
     c.innerHTML=records.map(function(r,i){
         return '<div class="list-item"><div class="list-item-left">'+
             '<div class="list-item-icon" style="background:rgba(245,158,11,0.15);">'+(tn[r.type]?tn[r.type].split(' ')[0]:'🏃')+'</div>'+
@@ -1391,7 +1408,7 @@ function handlePlanImport(ev){
 function exportExerciseRecords(){
     if(appData.exercises.length===0){myAlert('暂无运动记录可导出','提示','📝');return;}
     var lines=['运动记录导出 - '+getTodayStr(),''];
-    var tn={running:'跑步',core:'核心训练',squat:'深蹲',pelvic:'盆底肌',walk:'散步',other:'其他'};
+    var tn=EXERCISE_LABELS_SHORT;
     appData.exercises.forEach(function(e){
         lines.push(e.date+' | '+(tn[e.type]||e.type)+' | '+(e.duration||0)+'分钟'+(e.calories?' | '+e.calories+'kcal':'')+(e.desc?' | '+e.desc:''));
     });
@@ -1561,8 +1578,8 @@ function renderDailyReport() {
     var td=appData.diets.filter(function(d){return d.date===today;});
     var te=appData.exercises.filter(function(e){return e.date===today;});
     var lw=getLatestWeight();
-    var mn={breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍪 加餐'};
-    var tn={running:'🏃 跑步',core:'💪 核心',squat:'🦵 深蹲',pelvic:'🧘 盆底肌',walk:'🚶 散步',other:'🏃 其他'};
+    var mn=MEAL_LABELS;
+    var tn=EXERCISE_LABELS;
 
     // 数据总结
     var summaryHtml='<div style="display:flex;flex-direction:column;gap:8px;">'+
@@ -1595,7 +1612,6 @@ function renderDailyReport() {
     document.getElementById('report-daily-summary').innerHTML=summaryHtml;
 
     // 自动检测完成情况
-    var cl=appData.checklist&&appData.checklist[today]?appData.checklist[today]:{};
     // 运动完成：晨间三项都有记录 + 当日计划运动有记录
     var hasCore=te.some(function(e){return e.type==='core';});
     var hasPelvic=te.some(function(e){return e.type==='pelvic';});
@@ -1731,7 +1747,7 @@ function syncBMR(){
     if(!lw||!lw.weight) return;
     var height=appData.settings.height;
     var age=17;
-    var bmr=Math.round(10*lw.weight + 6.25*height - 5*age - 5);
+    var bmr=Math.round(10*lw.weight + 6.25*height - 5*age + 5); // Mifflin-St Jeor 男性
     appData.settings.bmr=bmr;
 }
 
@@ -1799,7 +1815,7 @@ function renderBodyfatChart() {
 function renderWeightDetailModules() {
     var c=document.getElementById('weight-detail-modules');
     var lw=getLatestWeight();
-    if(!lw){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:20px;">暂无详细数据</p>';return;}
+    if(!lw){c.innerHTML=emptyState('暂无详细数据');return;}
     var metrics=[
         {key:'bodyfat',label:'体脂率',unit:'%',color:'var(--accent-pink)',important:true},
         {key:'leanMass',label:'去脂体重',unit:'kg',color:'var(--accent-green)',important:false},
@@ -1817,7 +1833,7 @@ function renderWeightDetailModules() {
         {key:'bodyAge',label:'身体年龄',unit:'岁',color:'var(--accent-orange)',important:false}
     ];
     var available=metrics.filter(function(m){return lw[m.key]!=null;});
-    if(available.length===0){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:16px;">暂无详细数据，请通过 AI 识图导入</p>';return;}
+    if(available.length===0){c.innerHTML=emptyState('暂无详细数据，请通过 AI 识图导入');return;}
     var prevWeight=null;
     for(var i=appData.weights.length-2;i>=0;i--){
         if(appData.weights[i]){prevWeight=appData.weights[i];break;}
@@ -1987,8 +2003,7 @@ async function calcFoodItem(btn){
         // 显示结果
         var resultsDiv=document.getElementById('food-calc-results');
         var existingRow=resultsDiv.querySelector('[data-calc-idx="'+idx+'"]');
-        var html='<div data-calc-idx="'+idx+'" style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:4px 8px;background:rgba(16,185,129,0.06);border-radius:6px;font-size:11px;margin-bottom:4px;">'+
-            '<span>🔥 '+data.calories+'kcal</span><span>🥩 蛋白'+data.protein+'g</span><span>🌾 碳水'+data.carbs+'g</span><span>🧈 脂肪'+data.fat+'g</span></div>';
+        var html=foodResultHtml(data,idx);
         if(existingRow) existingRow.outerHTML=html;
         else resultsDiv.insertAdjacentHTML('beforeend',html);
         updateFoodTotal();
@@ -2025,9 +2040,7 @@ async function calcAllFoodItems(){
         var resultsDiv=document.getElementById('food-calc-results');
         resultsDiv.innerHTML='';
         foodsData.forEach(function(d,i){
-            var html='<div data-calc-idx="'+i+'" style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:4px 8px;background:rgba(16,185,129,0.06);border-radius:6px;font-size:11px;margin-bottom:4px;">'+
-                '<span>🔥 '+d.calories+'kcal</span><span>🥩 蛋白'+d.protein+'g</span><span>🌾 碳水'+d.carbs+'g</span><span>🧈 脂肪'+d.fat+'g</span></div>';
-            resultsDiv.insertAdjacentHTML('beforeend',html);
+            resultsDiv.insertAdjacentHTML('beforeend',foodResultHtml(d,i));
         });
         updateFoodTotal();
         hideAILoading();
@@ -2083,14 +2096,6 @@ function updateFoodTotal(){
     document.getElementById('food-total-carbs').textContent=totalCarbs;
     document.getElementById('food-total-fat').textContent=totalFat;
 }
-function showRecordExerciseModal(){
-    document.getElementById('exercise-date').value=getTodayStr();
-    document.getElementById('exercise-type').value='running';
-    document.getElementById('exercise-duration').value='';
-    document.getElementById('exercise-calories').value='';
-    document.getElementById('exercise-desc').value='';
-    openModal('modal-record-exercise');
-}
 function showAIUploadModal(){
     document.getElementById('upload-zone').style.display='block';
     document.getElementById('upload-preview').style.display='none';
@@ -2134,7 +2139,7 @@ async function saveWeightRecord(){
     appData.weights.sort(function(a,b){return a.date.localeCompare(b.date);});
     syncBMR(); // 同步基础代谢率
     saveData(); closeModal('modal-record-weight');
-    refreshPageData('dashboard'); renderWeightPage();
+    renderWeightPage();
     celebrate();
     myAlert(existing?'已覆盖 '+date+' 的记录':'已保存到 '+date,'保存成功','✅');
 }
@@ -2171,7 +2176,7 @@ function saveDietRecord(){
     saveData(); closeModal('modal-record-diet');
     celebrate();
     myAlert('已保存 '+savedCount+' 种食物','保存成功','✅');
-    refreshPageData('dashboard'); renderDietPage();
+    renderDietPage();
 }
 function saveExerciseRecord(){
     var date=document.getElementById('exercise-date').value;
@@ -2181,14 +2186,11 @@ function saveExerciseRecord(){
         calories:parseInt(document.getElementById('exercise-calories').value)||0,
         desc:document.getElementById('exercise-desc').value||''});
     saveData(); closeModal('modal-record-exercise');
-    refreshPageData('dashboard'); renderExercisePage();
+    renderExercisePage();
 }
 function quickRecordExercise(type,desc,duration){
     var today=getTodayStr();
     appData.exercises.push({date:today,type:type,duration:duration,calories:0,desc:desc});
-    saveData();
-    // 自动勾选打卡
-    if(!appData.checklist)appData.checklist={};
     if(!appData.checklist[today])appData.checklist[today]={};
     if(type==='core'||type==='squat')appData.checklist[today].exercise=true;
     saveData();
@@ -2293,7 +2295,7 @@ async function saveAIRecognizedData(){
     appData.weights.sort(function(a,b){return a.date.localeCompare(b.date);});
     syncBMR(); // 同步基础代谢率
     saveData(); closeModal('modal-ai-upload');
-    refreshPageData('dashboard'); renderWeightPage();
+    renderWeightPage();
     celebrate();
     myAlert('已保存到 '+recognizedData.date+'<br>体重: '+(recognizedData.weight||'--')+' kg','保存成功','✅');
 }
@@ -2345,7 +2347,7 @@ function saveAIDietData(){
         calories:recognizedDietData.calories,protein:recognizedDietData.protein,
         note:'AI识别 | '+recognizedDietData.note});
     saveData(); closeModal('modal-diet-ai');
-    refreshPageData('dashboard'); renderDietPage();
+    renderDietPage();
 }
 
 /* ====== 初始化 ====== */
