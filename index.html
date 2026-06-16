@@ -957,7 +957,51 @@ function loadData() {
     } catch(e) { console.error('加载失败', e); }
     return JSON.parse(JSON.stringify(DEFAULT_DATA));
 }
-function saveData() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); } catch(e) { myAlert('数据保存失败','错误','❌'); } }
+function saveData() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); } catch(e) { myAlert('数据保存失败','错误','❌'); }
+    syncToServer();
+}
+// === 服务器数据同步 ===
+function syncToServer() {
+    try {
+        fetch(API_BASE_URL + '/api/data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(appData)
+        }).catch(function() {});
+    } catch(e) {}
+}
+function loadFromServer() {
+    return fetch(API_BASE_URL + '/api/data').then(function(r) { return r.json(); }).then(function(data) {
+        if (data && data.weights) {
+            data.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
+            if (!data.checklist) data.checklist = {};
+            appData = data;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+            return true;
+        }
+        return false;
+    }).catch(function() { return false; });
+}
+var _evtSource = null;
+function startSSE() {
+    if (_evtSource) return;
+    _evtSource = new EventSource(API_BASE_URL + '/api/events');
+    _evtSource.addEventListener('data-updated', function(e) {
+        loadFromServer().then(function() {
+            var activePage = document.querySelector('.page.active');
+            if (activePage) {
+                var pageId = activePage.id.replace('page-', '');
+                refreshPageData(pageId);
+            }
+        });
+    });
+    _evtSource.onerror = function() {
+        _evtSource.close();
+        _evtSource = null;
+        setTimeout(startSSE, 5000);
+    };
+}
 function exportData() {
     var blob = new Blob([JSON.stringify(appData,null,2)], {type:'application/json'});
     var a = document.createElement('a');
@@ -2444,9 +2488,13 @@ function saveAIDietData(){
 
 /* ====== 初始化 ====== */
 document.addEventListener('DOMContentLoaded',function(){
-    renderDashboard();
-    renderSettings();
-    // 心跳：每30秒 ping 服务器，浏览器关闭后服务器自动停止
+    // 从服务器加载数据（多设备同步）
+    loadFromServer().then(function() {
+        renderDashboard();
+        renderSettings();
+        startSSE(); // 启动实时监听
+    });
+    // 心跳
     setInterval(function(){
         fetch(API_BASE_URL+'/api/ping').catch(function(){});
     },30000);

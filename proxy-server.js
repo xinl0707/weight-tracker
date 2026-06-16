@@ -35,6 +35,25 @@ var MIMO_API_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
 var MIMO_MODEL = 'mimo-v2.5';
 var ROOT_DIR = __dirname; // 项目根目录
 
+// ============ 服务器端数据存储 ============
+var DATA_FILE = path.join(ROOT_DIR, 'app-data.json');
+var sseClients = []; // SSE 连接列表
+
+function loadServerData() {
+    try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')); }
+    catch(e) { return null; }
+}
+function saveServerData(data) {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+}
+function broadcastSSE(event, data) {
+    var msg = 'event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n';
+    sseClients = sseClients.filter(function(client) {
+        try { client.write(msg); return true; }
+        catch(e) { return false; }
+    });
+}
+
 // ============ 心跳 & 自动关闭 ============
 var lastPing = Date.now();
 var SHUTDOWN_TIMEOUT = 60000; // 60秒无心跳则关闭
@@ -211,6 +230,42 @@ var server = http.createServer(function(req, res) {
             if (lanIP !== 'localhost') break;
         }
         sendJSON(res, 200, { port: PORT, lanIP: lanIP, url: 'http://' + lanIP + ':' + PORT });
+        return;
+    }
+
+    // SSE 实时推送（客户端监听数据变更）
+    if (pathname === '/api/events' && req.method === 'GET') {
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*'
+        });
+        res.write('event: connected\ndata: {}\n\n');
+        sseClients.push(res);
+        req.on('close', function() {
+            sseClients = sseClients.filter(function(c) { return c !== res; });
+        });
+        return;
+    }
+
+    // 读取服务器数据
+    if (pathname === '/api/data' && req.method === 'GET') {
+        var data = loadServerData();
+        sendJSON(res, 200, data || null);
+        return;
+    }
+
+    // 保存服务器数据 + 广播给所有客户端
+    if (pathname === '/api/data' && req.method === 'POST') {
+        readBody(req).then(function(body) {
+            saveServerData(body);
+            broadcastSSE('data-updated', { timestamp: Date.now() });
+            console.log('[Data] Saved & broadcast to ' + sseClients.length + ' clients');
+            sendJSON(res, 200, { ok: true });
+        }).catch(function(err) {
+            sendJSON(res, 500, { error: err.message });
+        });
         return;
     }
 
