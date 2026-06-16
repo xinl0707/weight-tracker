@@ -1,0 +1,13 @@
+# Claude Code 本地配置
+.claude/
+
+# 环境变量（含 API Key）
+.env
+
+# 系统文件
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# 日志
+*.log
