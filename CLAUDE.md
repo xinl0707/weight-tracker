@@ -31,8 +31,7 @@ node proxy-server.js
 
 ### 仓库结构
 
-- `weight-tracker/` — 减肥追踪 Web 应用（主项目）
-- `pomodoro-app/` — 番茄钟 Electron 应用（独立项目，不相关）
+- `weight-tracker/` — 减肥追踪 Web 应用
 
 ### weight-tracker 核心文件
 

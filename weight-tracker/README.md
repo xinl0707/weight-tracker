@@ -16,7 +16,7 @@ node proxy-server.js
 
 启动后，在网页的"设置"中配置：
 - API 地址: `http://localhost:3000/api/recognize`
-- API Key: 你的豆包 API Key
+- API Key: 你的小米 MiMO API Key
 
 ## 功能说明
 
