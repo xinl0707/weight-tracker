@@ -896,7 +896,7 @@
 
 <!-- ====== AI 计划生成对话框 ====== -->
 <div class="modal-overlay" id="modal-ai-planner" style="z-index:250;">
-    <div class="modal" style="max-width:650px;height:85vh;display:flex;flex-direction:column;padding:0;">
+    <div class="modal" style="max-width:750px;height:90vh;display:flex;flex-direction:column;padding:0;">
         <div style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
             <div style="display:flex;align-items:center;gap:10px;">
                 <span style="font-size:20px;">🤖</span>
@@ -1463,10 +1463,19 @@ function recordPlanItem(type,name,defaultDuration){
     openModal('modal-record-exercise');
 }
 // 记录自定义计划项
+function autoDetectExerciseType(desc){
+    desc=(desc||'').toLowerCase();
+    if(/跑|慢跑|快跑|跑步|冲刺|间歇跑/.test(desc)) return 'running';
+    if(/核心|卷腹|平板|仰卧|俯卧撑|腹肌/.test(desc)) return 'core';
+    if(/深蹲|蹲/.test(desc)) return 'squat';
+    if(/盆底|凯格尔/.test(desc)) return 'pelvic';
+    if(/走|散步|快走|徒步/.test(desc)) return 'walk';
+    return 'other';
+}
 function recordPlanItemCustom(desc){
     var today=getTodayStr();
     document.getElementById('exercise-date').value=today;
-    document.getElementById('exercise-type').value='other';
+    document.getElementById('exercise-type').value=autoDetectExerciseType(desc);
     document.getElementById('exercise-duration').value='';
     document.getElementById('exercise-calories').value='';
     document.getElementById('exercise-desc').value=desc;
@@ -1670,12 +1679,13 @@ async function streamAIResponse(){
         '当前运动计划：\n'+currentPlan+'\n\n'+
         '每日晨间训练（固定，用户可调整内容但框架不变）：'+
         MORNING_PLAN.map(function(m){return m.name}).join('、')+'\n\n'+
-        '【重要规则】\n'+
-        '1. 不要反复询问"是否可以生成计划"，直接正常对话\n'+
-        '2. 用户说的任何需求你都要直接回应并给建议\n'+
-        '3. 输出使用 Markdown 格式（标题、粗体、列表等）\n'+
-        '4. 如果用户没有特别要求，你可以主动给出一份推荐方案\n'+
-        '5. 用中文回答，语气亲切专业';
+        '【重要规则 - 必须严格遵守】\n'+
+        '1. 绝对不要反复询问用户"是否可以生成计划"或"可以开始生成了吗"\n'+
+        '2. 直接正常对话，用户说什么你就回应什么\n'+
+        '3. 主动给出建议和方案，不要等用户催\n'+
+        '4. 输出使用 Markdown 格式（## 标题、**粗体**、- 列表、| 表格 |\n'+
+        '5. 用中文回答，语气亲切专业\n'+
+        '6. 不要在回复末尾加【可以生成计划】之类的提示词';
 
     var messages=[{role:'system',content:context}];
     _plannerHistory.forEach(function(h){messages.push(h);});
@@ -1708,27 +1718,56 @@ async function streamAIResponse(){
                     }catch(e){}
                 }
             }
-            // 实时更新显示
+            // 实时更新显示（只在底部附近时自动滚动）
             if(fullText){
                 typingEl.style.display='none';
                 msgDiv.style.display='block';
                 msgDiv.innerHTML=renderMarkdown(fullText);
-                msgDiv.scrollIntoView({behavior:'smooth'});
+                var msgContainer=document.getElementById('ai-planner-messages');
+                var isNearBottom=msgContainer.scrollHeight-msgContainer.scrollTop-msgContainer.clientHeight<150;
+                if(isNearBottom) msgContainer.scrollTop=msgContainer.scrollHeight;
             }
         }
         if(fullText){
             _plannerHistory.push({role:'assistant',content:fullText});
-            // 检查是否包含计划JSON
-            var planMatch=fullText.match(/```json\s*([\s\S]*?)```/) || fullText.match(/\{[\s\S]*"plan"[\s\S]*\}/);
-            if(planMatch){
+            // 尝试多种方式提取计划JSON
+            var extracted=false;
+            // 策略1：```json ... ``` 代码块
+            var codeMatch=fullText.match(/```json\s*([\s\S]*?)```/);
+            if(codeMatch){
                 try{
-                    var planStr=planMatch[1]||planMatch[0];
-                    var planData=JSON.parse(planStr);
-                    if(planData.plan){
-                        _plannerPlan=planData.plan;
-                        document.getElementById('btn-generate-plan').style.display='block';
-                    }
+                    var pd=JSON.parse(codeMatch[1]);
+                    if(pd.plan){_plannerPlan=pd.plan;extracted=true;}
                 }catch(e){}
+            }
+            // 策略2：直接找 {..."plan"...} 结构
+            if(!extracted){
+                var jsonMatch=fullText.match(/\{[\s\S]*"plan"[\s\S]*\}/);
+                if(jsonMatch){
+                    try{
+                        var pd2=JSON.parse(jsonMatch[0]);
+                        if(pd2.plan){_plannerPlan=pd2.plan;extracted=true;}
+                    }catch(e){}
+                }
+            }
+            // 策略3：找任何包含周一~周日的JSON对象
+            if(!extracted){
+                var allJson=fullText.match(/\{[\s\S]*\}/g);
+                if(allJson){
+                    for(var ji=0;ji<allJson.length;ji++){
+                        try{
+                            var pd3=JSON.parse(allJson[ji]);
+                            // 检查是否包含周一~周日的数据
+                            if(pd3['1']||pd3['周一']||pd3.Monday){
+                                _plannerPlan=pd3;extracted=true;break;
+                            }
+                        }catch(e){}
+                    }
+                }
+            }
+            if(extracted){
+                document.getElementById('btn-generate-plan').style.display='block';
+                addPlannerMessage('system','✅ 计划已提取！点击右上角 📋 或下方按钮导入');
             }
         }
     }catch(err){
@@ -1744,7 +1783,7 @@ async function streamAIResponse(){
 async function requestAIPlanGeneration(){
     if(_plannerStreaming) return;
     addPlannerMessage('user','📋 请根据我们的对话，生成完整的周一到周日运动计划。');
-    _plannerHistory.push({role:'user',content:'请生成完整的7天运动计划。输出格式：```json\n{"plan":{"1":{"name":"计划名","items":["运动1","运动2"]},...}}\n```\n其中 key 1=周一,2=周二,...,6=周六,0=周日。'});
+    _plannerHistory.push({role:'user',content:'请生成完整的7天运动计划。输出格式：```json\n{"plan":{"1":{"name":"计划名","items":["运动1","运动2"]},...}}\n```\n其中 key 1=周一,2=周二,...,6=周六,0=周日。不需要解释，直接输出JSON。'});
     await streamAIResponse();
 }
 
@@ -1755,10 +1794,21 @@ function generateFinalPlan(){
         return;
     }
     var icons={1:'🏃',2:'🚶',3:'🏃',4:'🧘',5:'🏃',6:'🚶',0:'🌿'};
+    var dayNames={1:'周一',2:'周二',3:'周三',4:'周四',5:'周五',6:'周六',0:'周日'};
     Object.keys(_plannerPlan).forEach(function(d){
         var day=_plannerPlan[d];
-        var icon=icons[d]||'🏃';
-        WEEKLY_PLAN[d]={name:icon+' '+day.name,icon:icon,items:day.items||[]};
+        if(!day) return;
+        var key=parseInt(d);
+        if(isNaN(key)) return;
+        var icon=icons[key]||'🏃';
+        var name=(day.name||dayNames[key]||'休息');
+        var items=day.items||day.exercises||[];
+        // 确保 items 是数组
+        if(!Array.isArray(items)){
+            if(typeof items==='string') items=items.split('\n').filter(function(s){return s.trim();});
+            else items=[];
+        }
+        WEEKLY_PLAN[key]={name:icon+' '+name,icon:icon,items:items};
     });
     saveData();
     renderExercisePage();
@@ -1782,49 +1832,113 @@ function switchReportTab(tab, btn) {
 /* ====== Markdown 渲染 ====== */
 function renderMarkdown(text) {
     if(!text) return '';
-    // 清理：去除每行首尾空格，合并连续空行，去除行尾空格
-    var lines = text.replace(/\r/g,'').split('\n').map(function(l){return l.replace(/\s+$/,'');});
-    var out = [];
-    var prevEmpty = false;
+    var lines = text.replace(/\r/g,'').split('\n');
+    var html = '';
+    var inTable = false;
+    var tableRows = [];
+
     for(var i=0;i<lines.length;i++){
-        var line = lines[i];
+        var line = lines[i].replace(/\s+$/,'');
         var trimmed = line.trim();
-        // 跳过连续空行（只保留一个）
-        if(trimmed===''){
-            if(!prevEmpty){out.push('');prevEmpty=true;}
+
+        // 表格检测
+        if(/^\|(.+)\|$/.test(trimmed) && /\|/.test(trimmed)){
+            var cells=trimmed.split('|').filter(function(c,i,a){return i>0&&i<a.length-1;});
+            // 跳过分隔行 |---|---|
+            if(/^[\|\s\-:]+$/.test(trimmed)) continue;
+            if(!inTable){
+                inTable=true;
+                tableRows=[];
+                // 第一行作为表头
+                tableRows.push({cells:cells,isHeader:true});
+            }else{
+                tableRows.push({cells:cells,isHeader:false});
+            }
             continue;
         }
-        prevEmpty = false;
-        // 标题行前加空行
-        if(/^#{1,6}\s/.test(trimmed) && out.length>0 && out[out.length-1]!==''){
-            out.push('');
+
+        // 表格结束，渲染表格
+        if(inTable){
+            html+=renderMarkdownTable(tableRows);
+            inTable=false;
+            tableRows=[];
         }
-        out.push(trimmed);
-    }
-    text = out.join('\n').trim();
-    var html = text
+
+        // 空行
+        if(trimmed===''){
+            html+='<div style="height:4px;"></div>';
+            continue;
+        }
+
         // 标题
-        .replace(/^#### (.+)$/gm, '<div style="color:var(--text-secondary);font-weight:600;margin:6px 0 3px;font-size:13px;">$1</div>')
-        .replace(/^### (.+)$/gm, '<div style="color:var(--text-primary);font-weight:600;margin:8px 0 4px;font-size:14px;">$1</div>')
-        .replace(/^## (.+)$/gm, '<div style="color:var(--text-primary);font-weight:700;margin:10px 0 5px;font-size:15px;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:3px;">$1</div>')
-        .replace(/^# (.+)$/gm, '<div style="color:var(--text-primary);font-weight:700;margin:12px 0 6px;font-size:16px;">$1</div>')
-        // 粗体和斜体
-        .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--text-primary);">$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        // 行内代码
-        .replace(/`(.+?)`/g, '<code style="background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:3px;font-size:12px;">$1</code>')
-        // 无序列表
-        .replace(/^[\-\*\+] (.+)$/gm, '<div style="padding:1px 0 1px 14px;position:relative;font-size:13px;"><span style="position:absolute;left:0;color:var(--accent-blue);">•</span>$1</div>')
-        // 有序列表
-        .replace(/^\d+\. (.+)$/gm, '<div style="padding:1px 0 1px 18px;font-size:13px;">$1</div>')
+        if(/^#### (.+)$/.test(trimmed)){html+='<div style="color:var(--text-secondary);font-weight:600;margin:6px 0 3px;font-size:13px;">'+trimmed.slice(5)+'</div>';continue;}
+        if(/^### (.+)$/.test(trimmed)){html+='<div style="color:var(--text-primary);font-weight:600;margin:8px 0 4px;font-size:14px;">'+trimmed.slice(4)+'</div>';continue;}
+        if(/^## (.+)$/.test(trimmed)){html+='<div style="color:var(--text-primary);font-weight:700;margin:10px 0 5px;font-size:15px;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:3px;">'+trimmed.slice(3)+'</div>';continue;}
+        if(/^# (.+)$/.test(trimmed)){html+='<div style="color:var(--text-primary);font-weight:700;margin:12px 0 6px;font-size:16px;">'+trimmed.slice(2)+'</div>';continue;}
+
         // 分割线
-        .replace(/^[\-\*]{3,}$/gm, '<div style="border-top:1px solid rgba(255,255,255,0.06);margin:6px 0;"></div>')
+        if(/^[\-\*]{3,}$/.test(trimmed)){html+='<div style="border-top:1px solid rgba(255,255,255,0.06);margin:6px 0;"></div>';continue;}
+
+        // 代码块
+        if(/^```/.test(trimmed)){
+            var codeLines=[];
+            i++;
+            while(i<lines.length && !/^```/.test(lines[i].trim())){
+                codeLines.push(lines[i]);
+                i++;
+            }
+            html+='<pre style="background:rgba(0,0,0,0.3);padding:8px 10px;border-radius:6px;overflow-x:auto;margin:6px 0;font-size:12px;line-height:1.5;">'+codeLines.join('\n').replace(/</g,'&lt;')+'</pre>';
+            continue;
+        }
+
+        // 无序列表
+        if(/^[\-\*\+] (.+)$/.test(trimmed)){
+            html+='<div style="padding:1px 0 1px 14px;position:relative;font-size:13px;"><span style="position:absolute;left:0;color:var(--accent-blue);">•</span>'+renderInlineMarkdown(trimmed.slice(2))+'</div>';
+            continue;
+        }
+
+        // 有序列表
+        if(/^\d+\. (.+)$/.test(trimmed)){
+            html+='<div style="padding:1px 0 1px 18px;font-size:13px;">'+renderInlineMarkdown(trimmed.replace(/^\d+\.\s/,''))+'</div>';
+            continue;
+        }
+
         // 引用
-        .replace(/^>\s?(.+)$/gm, '<div style="padding:3px 10px;border-left:3px solid var(--accent-blue);color:var(--text-secondary);font-size:13px;margin:2px 0;">$1</div>')
-        // 空行→极小间距
-        .replace(/\n\n/g, '<div style="height:4px;"></div>')
-        .replace(/\n/g, '<br>');
+        if(/^>\s?(.+)$/.test(trimmed)){
+            html+='<div style="padding:3px 10px;border-left:3px solid var(--accent-blue);color:var(--text-secondary);font-size:13px;margin:2px 0;">'+renderInlineMarkdown(trimmed.slice(2))+'</div>';
+            continue;
+        }
+
+        // 普通段落
+        html+='<div style="font-size:13px;line-height:1.7;">'+renderInlineMarkdown(trimmed)+'</div>';
+    }
+    // 渲染剩余表格
+    if(inTable) html+=renderMarkdownTable(tableRows);
+    return html;
+}
+
+function renderInlineMarkdown(text){
+    return text
+        .replace(/\*\*\*(.+?)\*\*\*/g,'<strong><em>$1</em></strong>')
+        .replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--text-primary);">$1</strong>')
+        .replace(/\*(.+?)\*/g,'<em>$1</em>')
+        .replace(/`(.+?)`/g,'<code style="background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:3px;font-size:12px;">$1</code>');
+}
+
+function renderMarkdownTable(rows){
+    if(rows.length===0) return '';
+    var html='<div style="overflow-x:auto;margin:8px 0;"><table style="width:100%;border-collapse:collapse;font-size:12px;">';
+    rows.forEach(function(row,idx){
+        html+='<tr>';
+        row.cells.forEach(function(cell){
+            var tag=idx===0?'th':'td';
+            var style=idx===0?'padding:6px 10px;background:rgba(59,130,246,0.1);border:1px solid rgba(255,255,255,0.06);font-weight:600;color:var(--text-primary);text-align:left;':
+                'padding:5px 10px;border:1px solid rgba(255,255,255,0.04);color:var(--text-secondary);';
+            html+='<'+tag+' style="'+style+'">'+renderInlineMarkdown(cell.trim())+'</'+tag+'>';
+        });
+        html+='</tr>';
+    });
+    html+='</table></div>';
     return html;
 }
 
@@ -2241,9 +2355,11 @@ function renderCaloriesChart() {
 function openModal(id){document.getElementById(id).classList.add('active');}
 function closeModal(id){document.getElementById(id).classList.remove('active');}
 
-// 点击外部关闭
+// 点击外部关闭（AI计划对话框除外）
 document.querySelectorAll('.modal-overlay').forEach(function(o){
-    o.addEventListener('click',function(e){if(e.target===this)this.classList.remove('active');});
+    o.addEventListener('click',function(e){
+        if(e.target===this && this.id!=='modal-ai-planner') this.classList.remove('active');
+    });
 });
 
 function showRecordWeightModal(){
