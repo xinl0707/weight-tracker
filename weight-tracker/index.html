@@ -519,11 +519,39 @@
             </div>
         </div>
         <div class="card" style="margin-bottom:20px;">
+            <div class="card-title"><span class="icon" style="background:rgba(59,130,246,0.15);">📊</span>今日营养素摄入</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+                <div style="text-align:center;padding:12px 8px;background:rgba(59,130,246,0.06);border-radius:10px;">
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">🥩 蛋白质</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--accent-blue);" id="nutrient-protein">0g</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;" id="nutrient-protein-pct">--</div>
+                </div>
+                <div style="text-align:center;padding:12px 8px;background:rgba(16,185,129,0.06);border-radius:10px;">
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">🌾 碳水化合物</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--accent-green);" id="nutrient-carbs">0g</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;" id="nutrient-carbs-pct">--</div>
+                </div>
+                <div style="text-align:center;padding:12px 8px;background:rgba(236,72,153,0.06);border-radius:10px;">
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">🧈 脂肪</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--accent-pink);" id="nutrient-fat">0g</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;" id="nutrient-fat-pct">--</div>
+                </div>
+            </div>
+            <div style="height:8px;border-radius:4px;background:rgba(255,255,255,0.04);overflow:hidden;display:flex;" id="nutrient-bar">
+                <div style="background:var(--accent-blue);transition:width 0.3s;" id="nutrient-bar-protein"></div>
+                <div style="background:var(--accent-green);transition:width 0.3s;" id="nutrient-bar-carbs"></div>
+                <div style="background:var(--accent-pink);transition:width 0.3s;" id="nutrient-bar-fat"></div>
+            </div>
+            <div style="display:flex;justify-content:center;gap:16px;margin-top:8px;font-size:11px;color:var(--text-muted);">
+                <span>● 蛋白质</span><span>● 碳水</span><span>● 脂肪</span>
+            </div>
+        </div>
+        <div class="card" style="margin-bottom:20px;">
             <div class="card-title"><span class="icon" style="background:rgba(16,185,129,0.15);">📝</span>今日饮食记录</div>
             <div id="diet-today-list"></div>
         </div>
         <div class="card">
-            <div class="card-title"><span class="icon" style="background:rgba(59,130,246,0.15);">📈</span>热量摄入趋势</div>
+            <div class="card-title"><span class="icon" style="background:rgba(59,130,246,0.15);">📈</span>营养摄入趋势（7天）</div>
             <div style="position:relative;width:100%;height:220px;"><canvas id="chart-calories"></canvas></div>
         </div>
     </div>
@@ -835,9 +863,8 @@
                 </div>
                 <div id="food-items-list">
                     <div class="food-item-row" style="display:flex;gap:6px;margin-bottom:6px;align-items:end;">
-                        <div style="flex:2;"><input class="input" placeholder="食物名称" data-food-name></div>
-                        <div style="flex:2;"><input class="input" placeholder="吃了多少（如：小半碗）" data-food-amount></div>
-                        <button class="btn btn-primary btn-sm" onclick="calcFoodItem(this)" style="height:36px;padding:0 8px;font-size:12px;flex-shrink:0;">AI算</button>
+                        <div style="flex:3;"><input class="input" placeholder="食物名称" data-food-name></div>
+                        <div style="flex:3;"><input class="input" placeholder="吃了多少（如：小半碗）" data-food-amount></div>
                         <button class="btn btn-danger btn-sm btn-icon" onclick="removeFoodItem(this)" style="height:36px;width:36px;flex-shrink:0;">✕</button>
                     </div>
                 </div>
@@ -1174,6 +1201,14 @@ function getTodayStr() {
 function getTodayCalories(ds) {
     return appData.diets.filter(function(d){return d.date===ds;}).reduce(function(s,d){return s+(parseInt(d.calories)||0);},0);
 }
+function getTodayNutrients(ds) {
+    var td=appData.diets.filter(function(d){return d.date===ds;});
+    return {
+        protein: td.reduce(function(s,d){return s+(parseFloat(d.protein)||0);},0),
+        carbs: td.reduce(function(s,d){return s+(parseFloat(d.carbs)||0);},0),
+        fat: td.reduce(function(s,d){return s+(parseFloat(d.fat)||0);},0)
+    };
+}
 function getLatestWeight() { return appData.weights.length>0 ? appData.weights[appData.weights.length-1] : null; }
 function getPreviousWeight() { return appData.weights.length>1 ? appData.weights[appData.weights.length-2] : null; }
 
@@ -1359,6 +1394,31 @@ function renderDietPage() {
     var fill=document.getElementById('diet-progress-fill');
     fill.style.width=pct+'%';
     fill.style.background=pct>100?'var(--gradient-3)':'var(--gradient-2)';
+
+    // 渲染三大营养素统计
+    var nut=getTodayNutrients(today);
+    var totalG=nut.protein+nut.carbs+nut.fat;
+    document.getElementById('nutrient-protein').textContent=Math.round(nut.protein)+'g';
+    document.getElementById('nutrient-carbs').textContent=Math.round(nut.carbs)+'g';
+    document.getElementById('nutrient-fat').textContent=Math.round(nut.fat)+'g';
+    if(totalG>0){
+        var pPct=Math.round(nut.protein/totalG*100);
+        var cPct=Math.round(nut.carbs/totalG*100);
+        var fPct=100-pPct-cPct;
+        document.getElementById('nutrient-protein-pct').textContent=pPct+'%占比';
+        document.getElementById('nutrient-carbs-pct').textContent=cPct+'%占比';
+        document.getElementById('nutrient-fat-pct').textContent=fPct+'%占比';
+        document.getElementById('nutrient-bar-protein').style.width=pPct+'%';
+        document.getElementById('nutrient-bar-carbs').style.width=cPct+'%';
+        document.getElementById('nutrient-bar-fat').style.width=fPct+'%';
+    }else{
+        document.getElementById('nutrient-protein-pct').textContent='--';
+        document.getElementById('nutrient-carbs-pct').textContent='--';
+        document.getElementById('nutrient-fat-pct').textContent='--';
+        document.getElementById('nutrient-bar-protein').style.width='0%';
+        document.getElementById('nutrient-bar-carbs').style.width='0%';
+        document.getElementById('nutrient-bar-fat').style.width='0%';
+    }
 
     var mn=MEAL_LABELS;
     var lc=document.getElementById('diet-today-list');
@@ -2331,13 +2391,19 @@ function renderCaloriesChart() {
     for(var i=6;i>=0;i--){
         var d=new Date();d.setDate(d.getDate()-i);
         var ds=d.toISOString().slice(0,10);
-        days.push({date:ds.slice(5),cal:getTodayCalories(ds)});
+        var nut=getTodayNutrients(ds);
+        days.push({date:ds.slice(5),cal:getTodayCalories(ds),protein:nut.protein,carbs:nut.carbs,fat:nut.fat});
     }
-    var target=appData.settings.calorieTarget;
     currentCharts['chart-calories']=new Chart(canvas,{
         type:'bar',
-        data:{labels:days.map(function(d){return d.date;}),datasets:[{label:'热量摄入',data:days.map(function(d){return d.cal;}),backgroundColor:days.map(function(d){return d.cal>target?cColors.orangeBg:cColors.barBg;}),borderColor:days.map(function(d){return d.cal>target?cColors.orange:cColors.bar;}),borderWidth:1,borderRadius:6}]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:commonOpts.plugins.tooltip},scales:{x:commonOpts.scales.x,y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#5a6478',font:{size:11}},beginAtZero:true}}}
+        data:{labels:days.map(function(d){return d.date;}),datasets:[
+            {label:'蛋白质(g)',data:days.map(function(d){return Math.round(d.protein);}),backgroundColor:'rgba(59,130,246,0.7)',borderColor:'rgba(59,130,246,1)',borderWidth:1,borderRadius:{topLeft:0,topRight:0,bottomLeft:6,bottomRight:6}},
+            {label:'碳水(g)',data:days.map(function(d){return Math.round(d.carbs);}),backgroundColor:'rgba(16,185,129,0.7)',borderColor:'rgba(16,185,129,1)',borderWidth:1},
+            {label:'脂肪(g)',data:days.map(function(d){return Math.round(d.fat);}),backgroundColor:'rgba(236,72,153,0.7)',borderColor:'rgba(236,72,153,1)',borderWidth:1,borderRadius:{topLeft:6,topRight:6,bottomLeft:0,bottomRight:0}}
+        ]},
+        options:{responsive:true,maintainAspectRatio:false,
+            plugins:{legend:{display:true,labels:{color:'#5a6478',font:{size:11},boxWidth:12,padding:8}},tooltip:commonOpts.plugins.tooltip},
+            scales:{x:{stacked:true,grid:{display:false},ticks:{color:'#5a6478',font:{size:11}}},y:{stacked:true,grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#5a6478',font:{size:11}},beginAtZero:true}}}
     });
 }
 
@@ -2386,9 +2452,8 @@ function showRecordDietModal(){
     _dietCalcData=[];
     var list=document.getElementById('food-items-list');
     list.innerHTML='<div class="food-item-row" style="display:flex;gap:6px;margin-bottom:6px;align-items:end;">'+
-        '<div style="flex:2;"><input class="input" placeholder="食物名称" data-food-name></div>'+
-        '<div style="flex:2;"><input class="input" placeholder="吃了多少（如：小半碗）" data-food-amount></div>'+
-        '<button class="btn btn-primary btn-sm" onclick="calcFoodItem(this)" style="height:36px;padding:0 8px;font-size:12px;flex-shrink:0;">AI算</button>'+
+        '<div style="flex:3;"><input class="input" placeholder="食物名称" data-food-name></div>'+
+        '<div style="flex:3;"><input class="input" placeholder="吃了多少（如：小半碗）" data-food-amount></div>'+
         '<button class="btn btn-danger btn-sm btn-icon" onclick="removeFoodItem(this)" style="height:36px;width:36px;flex-shrink:0;">✕</button></div>';
     document.getElementById('food-calc-results').innerHTML='';
     document.getElementById('diet-paste-results').innerHTML='';
@@ -2409,9 +2474,8 @@ function addFoodItem(){
     var row=document.createElement('div');
     row.className='food-item-row';
     row.style.cssText='display:flex;gap:6px;margin-bottom:6px;align-items:end;';
-    row.innerHTML='<div style="flex:2;"><input class="input" placeholder="食物名称" data-food-name></div>'+
-        '<div style="flex:2;"><input class="input" placeholder="吃了多少（如：小半碗）" data-food-amount></div>'+
-        '<button class="btn btn-primary btn-sm" onclick="calcFoodItem(this)" style="height:36px;padding:0 8px;font-size:12px;flex-shrink:0;">AI算</button>'+
+    row.innerHTML='<div style="flex:3;"><input class="input" placeholder="食物名称" data-food-name></div>'+
+        '<div style="flex:3;"><input class="input" placeholder="吃了多少（如：小半碗）" data-food-amount></div>'+
         '<button class="btn btn-danger btn-sm btn-icon" onclick="removeFoodItem(this)" style="height:36px;width:36px;flex-shrink:0;">✕</button>';
     list.appendChild(row);
     row.querySelector('[data-food-name]').focus();
@@ -2425,36 +2489,6 @@ function removeFoodItem(btn){
         row.remove();
         updateFoodTotal();
     }
-}
-// AI 计算单项食物营养
-async function calcFoodItem(btn){
-    var row=btn.closest('.food-item-row');
-    var name=row.querySelector('[data-food-name]').value.trim();
-    var amount=row.querySelector('[data-food-amount]').value.trim();
-    if(!name){myAlert('请输入食物名称','提示','📝');return;}
-    btn.disabled=true; btn.textContent='计算中...';
-    try{
-        var resp=await fetch(API_BASE_URL+'/api/analyze',{
-            method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({prompt:'请估算以下食物的营养成分，只返回JSON：{"calories":热量kcal,"protein":蛋白质g,"carbs":碳水g,"fat":脂肪g}。食物：'+name+'，份量：'+(amount||'适量')})
-        });
-        var result=await resp.json();
-        var content=result.content||'';
-        var match=content.match(/\{[\s\S]*?\}/);
-        var data=match?JSON.parse(match[0]):{calories:0,protein:0,carbs:0,fat:0};
-        var idx=Array.from(document.getElementById('food-items-list').children).indexOf(row);
-        _dietCalcData[idx]={name:name,amount:amount,calories:data.calories||0,protein:data.protein||0,carbs:data.carbs||0,fat:data.fat||0};
-        // 显示结果
-        var resultsDiv=document.getElementById('food-calc-results');
-        var existingRow=resultsDiv.querySelector('[data-calc-idx="'+idx+'"]');
-        var html=foodResultHtml(data,idx);
-        if(existingRow) existingRow.outerHTML=html;
-        else resultsDiv.insertAdjacentHTML('beforeend',html);
-        updateFoodTotal();
-    }catch(e){
-        myAlert('AI 计算失败: '+e.message,'错误','❌');
-    }
-    btn.disabled=false; btn.textContent='AI算';
 }
 // AI 统一计算所有食物
 async function calcAllFoodItems(){
@@ -2745,7 +2779,7 @@ async function saveAIRecognizedData(){
 }
 
 /* ====== AI 识图（饮食） ====== */
-var recognizedDietData=null;
+var recognizedDietData=null; // 数组：[{name,calories,protein,carbs,fat},...]
 function handleDietImageUpload(ev){
     var file=ev.target.files[0];if(!file)return;
     var reader=new FileReader();
@@ -2763,16 +2797,48 @@ async function recognizeDietImage(b64){
     showAILoading('AI 正在识别食物...');
     try{
         var resp=await fetch(API_BASE_URL+'/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({image:b64,prompt:'请识别这张食物照片，估算总热量和主要营养素。以JSON格式返回：{"food":"食物名称描述","calories":估算热量kcal,"protein":蛋白质g,"note":"饮食建议"} 只返回JSON。'})});
+            body:JSON.stringify({image:b64,prompt:'请识别这张食物照片中的所有食物。如果有多道食物，请分别识别并估算每种的营养成分。返回JSON数组，每个元素：{"name":"食物名","calories":热量kcal,"protein":蛋白质g,"carbs":碳水g,"fat":脂肪g}。只返回JSON数组，不要其他文字。'})});
         if(!resp.ok)throw new Error('API 请求失败');
         var result=await resp.json();
-        recognizedDietData={food:result.food||'未识别',calories:result.calories||0,protein:result.protein||null,note:result.note||''};
-        document.getElementById('diet-upload-result-data').innerHTML=
-            '<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">'+
-            '食物: <strong style="color:var(--text-primary);">'+recognizedDietData.food+'</strong><br>'+
-            '估算热量: <strong style="color:var(--accent-orange);">'+recognizedDietData.calories+' kcal</strong><br>'+
-            (recognizedDietData.protein?'蛋白质: <strong>'+recognizedDietData.protein+' g</strong><br>':'')+
-            (recognizedDietData.note?'建议: '+recognizedDietData.note:'')+'</div>';
+        // 兼容处理：支持数组和单对象返回
+        var foods=[];
+        if(Array.isArray(result)){foods=result;}
+        else if(result.name||result.food){
+            foods=[{name:result.name||result.food,calories:result.calories||0,
+                protein:result.protein||0,carbs:result.carbs||0,fat:result.fat||0}];
+        }
+        // 如果 proxy 返回的是 text 字段，尝试解析
+        if(foods.length===0&&result.text){
+            var m=result.text.match(/\[[\s\S]*\]/);
+            if(m){try{foods=JSON.parse(m[0]);}catch(e){}}
+            if(foods.length===0){
+                var m2=result.text.match(/\{[\s\S]*?\}/g);
+                if(m2){foods=m2.map(function(s){try{return JSON.parse(s);}catch(e){return null;}}).filter(Boolean);}
+            }
+        }
+        if(foods.length===0)throw new Error('未识别到食物');
+        recognizedDietData=foods;
+        // 展示识别结果
+        var html='';
+        var totalCal=0,totalPro=0,totalCarb=0,totalFat=0;
+        foods.forEach(function(f){
+            totalCal+=f.calories||0;totalPro+=f.protein||0;totalCarb+=f.carbs||0;totalFat+=f.fat||0;
+            html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,0.04);border-radius:6px;margin-bottom:4px;font-size:12px;">'+
+                '<span style="flex:1;color:var(--text-primary);font-weight:600;">'+(f.name||'未知')+'</span>'+
+                '<span style="color:var(--accent-orange);">🔥'+(f.calories||0)+'kcal</span>'+
+                '<span style="color:var(--accent-blue);">🥩'+(f.protein||0)+'g</span>'+
+                '<span style="color:var(--accent-green);">🌾'+(f.carbs||0)+'g</span>'+
+                '<span style="color:var(--accent-pink);">🧈'+(f.fat||0)+'g</span></div>';
+        });
+        if(foods.length>1){
+            html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(245,158,11,0.1);border-radius:6px;margin-top:4px;font-size:12px;font-weight:600;">'+
+                '<span style="flex:1;color:var(--accent-orange);">合计</span>'+
+                '<span style="color:var(--accent-orange);">🔥'+totalCal+'kcal</span>'+
+                '<span style="color:var(--accent-blue);">🥩'+totalPro+'g</span>'+
+                '<span style="color:var(--accent-green);">🌾'+totalCarb+'g</span>'+
+                '<span style="color:var(--accent-pink);">🧈'+totalFat+'g</span></div>';
+        }
+        document.getElementById('diet-upload-result-data').innerHTML=html;
         hideAILoading();
         document.getElementById('diet-upload-result').style.display='block';
         document.getElementById('diet-upload-fallback').style.display='none';
@@ -2784,13 +2850,17 @@ function showDietFallback(msg){
     document.getElementById('diet-upload-result').style.display='none';
 }
 function saveAIDietData(){
-    if(!recognizedDietData)return;
+    if(!recognizedDietData||recognizedDietData.length===0)return;
     var date=document.getElementById('diet-ai-date').value||getTodayStr();
     var mealType=document.getElementById('diet-ai-meal-type').value;
-    appData.diets.push({date:date,mealType:mealType,food:recognizedDietData.food,
-        calories:recognizedDietData.calories,protein:recognizedDietData.protein,
-        note:'AI识别 | '+recognizedDietData.note});
+    recognizedDietData.forEach(function(f){
+        appData.diets.push({date:date,mealType:mealType,food:f.name||'未知',
+            calories:f.calories||0,protein:f.protein||0,carbs:f.carbs||0,fat:f.fat||0,
+            note:'AI识别'});
+    });
     saveData(); closeModal('modal-diet-ai');
+    celebrate();
+    myAlert('已保存 '+recognizedDietData.length+' 种食物','保存成功','✅');
     renderDietPage();
 }
 
