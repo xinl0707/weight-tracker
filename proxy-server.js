@@ -284,16 +284,32 @@ server.on('error', function(err) {
     }
 });
 
-server.listen(PORT, function() {
+server.listen(PORT, '0.0.0.0', function() {
+    // 获取局域网 IP
+    var os = require('os');
+    var interfaces = os.networkInterfaces();
+    var lanIP = 'localhost';
+    for (var name in interfaces) {
+        for (var i = 0; i < interfaces[name].length; i++) {
+            var iface = interfaces[name][i];
+            if (iface.family === 'IPv4' && !iface.internal) {
+                lanIP = iface.address;
+                break;
+            }
+        }
+        if (lanIP !== 'localhost') break;
+    }
+
     console.log('');
     console.log('  ========================================');
     console.log('    Xinlu Weight Loss Plan - Server');
     console.log('  ========================================');
     console.log('');
-    console.log('  Server:  http://localhost:' + PORT);
+    console.log('  Local:   http://localhost:' + PORT);
+    console.log('  LAN:     http://' + lanIP + ':' + PORT);
     console.log('  Model:   ' + MIMO_MODEL);
-    console.log('  API Key: Embedded (no config needed)');
     console.log('');
+    console.log('  Other devices on the same WiFi can access via LAN address');
     console.log('  Do NOT close this window!');
     console.log('');
 
