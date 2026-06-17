@@ -840,7 +840,7 @@
         </div>
         <div class="grid-2">
             <div class="input-group"><label class="input-label">日期</label><input class="input" type="date" id="diet-date"></div>
-            <div class="input-group"><label class="input-label">餐次</label>
+            <div class="input-group" id="diet-meal-type-wrap"><label class="input-label">餐次</label>
                 <select class="input" id="diet-meal-type">
                     <option value="breakfast">🌅 早餐</option>
                     <option value="lunch">☀️ 午餐</option>
@@ -877,7 +877,7 @@
         <div id="diet-mode-paste" style="display:none;">
             <div class="input-group">
                 <label class="input-label">粘贴今天吃的内容（自然语言即可）</label>
-                <textarea class="input" id="diet-paste-input" rows="5" placeholder="例如：&#10;早上吃了一碗豆浆配两个包子&#10;中午吃了半碗米饭，一份宫保鸡丁，一份清炒时蔬&#10;下午喝了一杯拿铁&#10;晚上吃了一个苹果和一小把坚果" style="resize:vertical;font-size:13px;"></textarea>
+                <textarea class="input" id="diet-paste-input" rows="5" placeholder="例如：&#10;早上吃了一碗豆浆配两个包子&#10;中午吃了半碗米饭，一份宫保鸡丁，一份清炒时蔬&#10;下午喝了一杯拿铁&#10;晚上吃了一个苹果和一小把坚果&#10;&#10;💡 AI 将自动识别每种食物属于哪餐" style="resize:vertical;font-size:13px;"></textarea>
             </div>
             <button class="btn btn-primary" onclick="parseDietPaste()" id="diet-parse-btn" style="width:100%;">🤖 AI 识别并计算营养</button>
             <div id="diet-paste-results" style="margin-top:10px;"></div>
@@ -2468,6 +2468,7 @@ function switchDietMode(mode,btn){
     btn.classList.add('active');
     document.getElementById('diet-mode-manual').style.display=mode==='manual'?'block':'none';
     document.getElementById('diet-mode-paste').style.display=mode==='paste'?'block':'none';
+    document.getElementById('diet-meal-type-wrap').style.display=mode==='paste'?'none':'block';
 }
 function addFoodItem(){
     var list=document.getElementById('food-items-list');
@@ -2539,22 +2540,37 @@ async function parseDietPaste(){
     try{
         var resp=await fetch(API_BASE_URL+'/api/analyze',{
             method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({prompt:'请分析以下饮食记录，识别每种食物及其份量，估算营养成分。返回JSON数组，每个元素：{"name":"食物名","amount":"份量","calories":kcal,"protein":g,"carbs":g,"fat":g}。只返回JSON数组。\n\n'+text})
+            body:JSON.stringify({prompt:'请分析以下饮食记录，识别每种食物及其份量，估算营养成分，并根据描述判断每种食物属于哪餐。返回JSON数组，每个元素：{"name":"食物名","mealType":"breakfast或lunch或dinner或snack","amount":"份量","calories":kcal,"protein":g,"carbs":g,"fat":g}。mealType取值：breakfast(早餐)、lunch(午餐)、dinner(晚餐)、snack(加餐/下午茶/夜宵)。如果无法判断餐次，默认为snack。只返回JSON数组。\n\n'+text})
         });
         var result=await resp.json();
         var content=result.content||'[]';
         var match=content.match(/\[[\s\S]*?\]/);
         var foods=match?JSON.parse(match[0]):[];
+        // 兼容：如果 AI 没返回 mealType，默认 snack
+        foods.forEach(function(f){if(!f.mealType)f.mealType='snack';});
         _dietCalcData=foods;
-        // 渲染结果
+        // 按餐次分组展示
+        var mn={breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍪 加餐'};
+        var groups={};
+        foods.forEach(function(f){
+            var mt=f.mealType||'snack';
+            if(!groups[mt])groups[mt]=[];
+            groups[mt].push(f);
+        });
         var html='';
-        foods.forEach(function(f,i){
-            html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:6px;margin-bottom:4px;font-size:12px;">'+
-                '<span style="flex:1;color:var(--text-primary);">'+f.name+' <span style="color:var(--text-muted);">'+(f.amount||'')+'</span></span>'+
-                '<span style="color:var(--accent-orange);">'+f.calories+'kcal</span>'+
-                '<span style="color:var(--accent-blue);">蛋白'+f.protein+'g</span>'+
-                '<span style="color:var(--accent-green);">碳水'+f.carbs+'g</span>'+
-                '<span style="color:var(--accent-pink);">脂肪'+f.fat+'g</span></div>';
+        ['breakfast','lunch','dinner','snack'].forEach(function(mt){
+            if(!groups[mt])return;
+            html+='<div style="margin-bottom:8px;">';
+            html+='<div style="font-size:12px;color:var(--accent-blue);font-weight:600;margin:4px 0 2px;">'+mn[mt]+'</div>';
+            groups[mt].forEach(function(f){
+                html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:6px;margin-bottom:3px;font-size:12px;">'+
+                    '<span style="flex:1;color:var(--text-primary);">'+f.name+' <span style="color:var(--text-muted);">'+(f.amount||'')+'</span></span>'+
+                    '<span style="color:var(--accent-orange);">'+f.calories+'kcal</span>'+
+                    '<span style="color:var(--accent-blue);">蛋白'+f.protein+'g</span>'+
+                    '<span style="color:var(--accent-green);">碳水'+f.carbs+'g</span>'+
+                    '<span style="color:var(--accent-pink);">脂肪'+f.fat+'g</span></div>';
+            });
+            html+='</div>';
         });
         document.getElementById('diet-paste-results').innerHTML=html||'<p style="color:var(--text-muted);">未识别到食物</p>';
         updateFoodTotal();
@@ -2631,7 +2647,7 @@ function saveDietRecord(){
     if(_dietCalcData.length>0){
         _dietCalcData.forEach(function(d){
             if(d.name){
-                appData.diets.push({date:date,mealType:mealType,food:d.name,
+                appData.diets.push({date:date,mealType:d.mealType||mealType,food:d.name,
                     calories:d.calories||0,protein:d.protein||0,
                     carbs:d.carbs||0,fat:d.fat||0,note:note});
                 savedCount++;
