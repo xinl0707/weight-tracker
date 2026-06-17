@@ -38,7 +38,7 @@ node proxy-server.js
 - **index.html** — 单文件应用（HTML + CSS + JS 全内联，约 2800 行）。所有页面、样式、逻辑都在这一个文件里
 - **proxy-server.js** — Node.js 代理服务器，解决浏览器 CORS 跨域问题，内嵌 MiMO API Key，提供静态文件服务、SSE 实时同步、数据存储
 - **start.bat** — Windows 一键启动脚本，`cd /d "%~dp0"` 确保从任何位置双击都能工作
-- **.env** — MiMO API Key 配置（`MIMO_API_KEY=sk-xxx`）
+- **.env** — MiMO API Key + WebDAV 凭据配置（`MIMO_API_KEY`、`WEBDAV_SERVER`、`WEBDAV_USER`、`WEBDAV_PASS`、`WEBDAV_DIR`），已被 .gitignore 排除
 - **app-data.json** — 服务器端数据存储（JSON），支持多设备同步
 
 ### index.html 内部结构

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>昕露的减肥计划</title>
+    <title>减重计划</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         :root {
@@ -400,7 +400,7 @@
 
 <!-- 侧边导航 -->
 <nav class="sidebar">
-    <div class="sidebar-logo" title="昕露的减肥计划">🏃</div>
+    <div class="sidebar-logo" title="减重计划">🏃</div>
     <div class="sidebar-nav">
         <button class="nav-btn active" onclick="switchPage('dashboard')" data-page="dashboard">🏠<span class="tooltip">首页仪表盘</span></button>
         <button class="nav-btn" onclick="switchPage('weight')" data-page="weight">⚖️<span class="tooltip">体重记录</span></button>
@@ -418,7 +418,7 @@
     <div id="page-dashboard" class="page active">
         <div class="page-header">
             <div>
-                <div class="page-title">👋 你好，昕露</div>
+                <div class="page-title" id="dashboard-greeting">👋 你好</div>
                 <div class="page-subtitle" id="dashboard-date"></div>
             </div>
             <button class="btn btn-primary" onclick="showRecordWeightModal()">+ 记录体重</button>
@@ -435,7 +435,7 @@
                     <path id="ring-rect" stroke="#10b981" stroke-width="6" stroke-linecap="round"/>
                 </svg>
                 <div class="stat-label">🎯 目标体重</div>
-                <div class="stat-value" style="color:var(--accent-green);" id="stat-target-weight">65 kg</div>
+                <div class="stat-value" style="color:var(--accent-green);" id="stat-target-weight">--</div>
                 <div class="stat-change" id="stat-target-progress"></div>
             </div>
             <div class="stat-card">
@@ -702,11 +702,11 @@
                 <div class="input-group"><label class="input-label">每日热量目标 (kcal)</label><input class="input" type="number" id="settings-calorie-target" value="1800"></div>
                 <div class="input-group"><label class="input-label">基础代谢率 (kcal)</label><input class="input" type="number" id="settings-bmr" value="1653" readonly style="opacity:0.7;"></div>
                 <div style="background:rgba(59,130,246,0.08);border-radius:10px;padding:14px;margin-top:12px;">
-                    <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+                    <p id="settings-bmr-tip" style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
                         💡 根据你的数据计算：<br>
-                        • 基础代谢率 (BMR): <strong>1653 kcal</strong><br>
-                        • 估计每日总消耗 (TDEE): <strong>~2300-2500 kcal</strong><br>
-                        • 建议每日摄入: <strong>1800 kcal</strong>（缺口约 500-700 kcal）
+                        • 基础代谢率 (BMR): <strong id="tip-bmr">--</strong><br>
+                        • 估计每日总消耗 (TDEE): <strong id="tip-tdee">--</strong><br>
+                        • 建议每日摄入: <strong id="tip-cal">--</strong>
                     </p>
                 </div>
             </div>
@@ -738,6 +738,7 @@
                 </div>
             </div>
         </div>
+        <button class="btn btn-primary" onclick="saveSettings()" style="width:100%;margin-top:16px;padding:14px;font-size:16px;">💾 保存设置</button>
     </div>
 
 </main>
@@ -1311,6 +1312,9 @@ function renderDashboard() {
     var now = new Date();
     var wk = ['日','一','二','三','四','五','六'];
     document.getElementById('dashboard-date').textContent = now.getFullYear()+'年'+(now.getMonth()+1)+'月'+now.getDate()+'日 星期'+wk[now.getDay()];
+    // 问候语使用用户昵称
+    document.getElementById('dashboard-greeting').textContent = '👋 你好，' + (appData.settings.name||'昕露');
+    document.title = (appData.settings.name||'昕露') + '的减重计划';
 
     var lw = getLatestWeight();
     if (lw) {
@@ -2069,8 +2073,210 @@ function renderMarkdownTable(rows){
     return html;
 }
 
-async function generateAIReport(type){
+/* ====== AI 报告：数据组装 + 统一 Prompt ====== */
+
+// 组装基础信息（settings 中所有字段）
+function buildBasicInfo(){
     var s=appData.settings;
+    return '【基础信息】\n'+
+        '昵称: '+s.name+' | 性别: '+(s.gender==='male'?'男':'女')+' | 年龄: 17岁 | 身高: '+s.height+'cm\n'+
+        '起始体重: '+s.startWeight+'kg | 目标体重: '+s.targetWeight+'kg\n'+
+        '起始日期: '+s.startDate+' | 目标日期: '+s.targetDate+'\n'+
+        '热量目标: '+s.calorieTarget+'kcal | BMR: '+(s.bmr||'--')+'kcal\n';
+}
+
+// 组装某一天的完整原始数据（体重+饮食+运动+计划）
+function buildDailyData(dateStr,isToday){
+    var lines=[];
+    // 体重
+    var w=null;
+    for(var i=appData.weights.length-1;i>=0;i--){if(appData.weights[i].date===dateStr){w=appData.weights[i];break;}}
+    lines.push('体重:');
+    if(w){
+        var parts=[w.weight+'kg'];
+        if(w.bmi) parts.push('BMI: '+w.bmi);
+        if(w.bodyfat) parts.push('体脂: '+w.bodyfat+'%');
+        if(w.leanMass) parts.push('去脂体重: '+w.leanMass+'kg');
+        if(w.fatMass) parts.push('脂肪量: '+w.fatMass+'kg');
+        if(w.muscleMass) parts.push('肌肉量: '+w.muscleMass+'kg');
+        if(w.waterPct) parts.push('水分率: '+w.waterPct+'%');
+        if(w.skeletalMuscle) parts.push('骨骼肌: '+w.skeletalMuscle+'kg');
+        if(w.proteinMass) parts.push('蛋白质: '+w.proteinMass+'kg');
+        if(w.boneMineral) parts.push('骨矿物: '+w.boneMineral+'kg');
+        if(w.bmr) parts.push('BMR: '+w.bmr+'kcal');
+        if(w.bodyAge) parts.push('身体年龄: '+w.bodyAge);
+        lines.push('  '+parts.join(' | '));
+    }else{
+        lines.push('  无记录');
+    }
+
+    // 饮食（按餐次分组）
+    var diets=appData.diets.filter(function(d){return d.date===dateStr;});
+    var mealOrder=['breakfast','lunch','dinner','snack'];
+    var mealEmoji={breakfast:'☀️',lunch:'☀️',dinner:'🌙',snack:'🍪'};
+    lines.push('饮食:');
+    if(diets.length>0){
+        mealOrder.forEach(function(mt){
+            var items=diets.filter(function(d){return d.mealType===mt;});
+            if(items.length>0){
+                lines.push('  '+mealEmoji[mt]+' '+MEAL_LABELS_SHORT[mt]+':');
+                items.forEach(function(d){
+                    var info=d.food+' — '+(d.calories||0)+'kcal';
+                    var nut=[];
+                    if(d.protein) nut.push('蛋白'+d.protein+'g');
+                    if(d.carbs) nut.push('碳水'+d.carbs+'g');
+                    if(d.fat) nut.push('脂肪'+d.fat+'g');
+                    if(nut.length>0) info+=' | '+nut.join(' ');
+                    lines.push('    '+info);
+                });
+            }
+        });
+    }else{
+        lines.push('  无记录');
+    }
+
+    // 运动
+    var exercises=appData.exercises.filter(function(e){return e.date===dateStr;});
+    var morningExs=exercises.filter(function(e){return e.type==='core'||e.type==='squat'||e.type==='pelvic';});
+    var otherExs=exercises.filter(function(e){return e.type!=='core'&&e.type!=='squat'&&e.type!=='pelvic';});
+    lines.push('运动:');
+    if(exercises.length>0){
+        if(morningExs.length>0){
+            lines.push('  🌅 晨间训练:');
+            morningExs.forEach(function(e){
+                var label=EXERCISE_LABELS_SHORT[e.type]||e.type;
+                var info=label+' — '+(e.duration||0)+'分钟';
+                if(e.calories) info+=' | '+e.calories+'kcal';
+                lines.push('    '+info);
+            });
+        }
+        if(otherExs.length>0){
+            lines.push('  🏃 每日训练:');
+            otherExs.forEach(function(e){
+                var label=EXERCISE_LABELS_SHORT[e.type]||e.type;
+                var info=label+' — '+(e.duration||0)+'分钟';
+                if(e.calories) info+=' | '+e.calories+'kcal';
+                if(e.desc) info+=' ('+e.desc+')';
+                lines.push('    '+info);
+            });
+        }
+    }else{
+        lines.push('  无');
+    }
+
+    // 当天计划（避免时区问题，手动解析日期）
+    var dp=dateStr.split('-');
+    var dow=new Date(parseInt(dp[0]),parseInt(dp[1])-1,parseInt(dp[2])).getDay();
+    var plan=(typeof WEEKLY_PLAN!=='undefined')?(WEEKLY_PLAN[dow]||WEEKLY_PLAN[1]):null;
+    lines.push('计划:');
+    if(typeof MORNING_PLAN!=='undefined'&&MORNING_PLAN.length>0){
+        lines.push('  晨间: '+MORNING_PLAN.map(function(m){return m.name;}).join('、'));
+    }
+    if(plan){
+        lines.push('  计划: '+plan.name+' ('+plan.items.join('、')+')');
+    }
+
+    // 时间感知提示（仅当天）
+    if(isToday){
+        var now=new Date();
+        var hour=now.getHours();
+        var missing=[];
+        var hasMeal={};
+        diets.forEach(function(d){hasMeal[d.mealType]=true;});
+        if(!hasMeal.breakfast) missing.push('早餐');
+        if(!hasMeal.lunch) missing.push('午餐');
+        if(!hasMeal.dinner) missing.push('晚餐');
+        if(!hasMeal.snack) missing.push('加餐');
+        if(missing.length>0){
+            lines.unshift('⚠️ 当前时间为'+hour+'点，'+missing.join('、')+'尚未记录，以下仅基于已录入数据。');
+        }
+    }
+
+    return lines.join('\n');
+}
+
+// 组装完整 prompt
+function buildReportPrompt(type){
+    var today=getTodayStr();
+    var basicInfo=buildBasicInfo();
+
+    if(type==='daily'){
+        return '你是专业的健身教练和营养师。请严格按照以下模板输出，不要添加额外章节，不要自行计算派生数据。\n\n'+
+            '## 📊 今日总结\n\n'+
+            '**整体评价:** （一句话概括今天的表现）\n\n'+
+            '### ⚖️ 体重\n'+
+            '- （基于原始数据分析）\n\n'+
+            '### 🍽️ 饮食分析\n'+
+            '- （基于原始数据分析）\n\n'+
+            '### 🏃 运动分析\n'+
+            '- （基于原始数据分析）\n\n'+
+            '### 💡 明日建议\n'+
+            '1. （具体建议1）\n'+
+            '2. （具体建议2）\n'+
+            '3. （具体建议3）\n\n'+
+            basicInfo+'\n\n'+
+            '【今日数据 - '+today+'】\n\n'+
+            buildDailyData(today,true);
+    }
+
+    // 周报和建议：近 7 天完整数据
+    if(type==='weekly'){
+        var lines=['你是专业的健身教练和营养师。请严格按照以下模板输出，不要添加额外章节，不要自行计算派生数据。\n\n'+
+            '## 📊 本周总结\n\n'+
+            '**整体评价:** （一句话概括本周表现）\n\n'+
+            '### ⚖️ 体重趋势\n'+
+            '- （基于7天数据分析趋势）\n\n'+
+            '### 🍽️ 饮食分析\n'+
+            '- （基于7天数据分析）\n\n'+
+            '### 🏃 运动分析\n'+
+            '- （基于7天数据分析）\n\n'+
+            '### 📋 下周计划\n'+
+            '1. 饮食: （具体建议）\n'+
+            '2. 运动: （具体建议）\n'+
+            '3. 生活: （具体建议）\n\n'+
+            basicInfo+'\n\n'+
+            '【近7天数据】\n'];
+        for(var d=6;d>=0;d--){
+            var dt=new Date();dt.setDate(dt.getDate()-d);
+            var ds=dt.toISOString().slice(0,10);
+            lines.push('\n--- '+ds.slice(5)+' ---');
+            lines.push(buildDailyData(ds,d===0));
+        }
+        return lines.join('\n');
+    }
+
+    if(type==='advice'){
+        var lines2=['你是专业的健身教练和营养师。请严格按照以下模板输出，不要添加额外章节，不要自行计算派生数据。\n\n'+
+            '## 💡 个性化建议\n\n'+
+            '### 🍽️ 饮食优化\n'+
+            '1. （建议1，附理由）\n'+
+            '2. （建议2，附理由）\n'+
+            '3. （建议3，附理由）\n\n'+
+            '### 🏃 运动调整\n'+
+            '1. （建议1，附理由）\n'+
+            '2. （建议2，附理由）\n'+
+            '3. （建议3，附理由）\n\n'+
+            '### 🧘 生活习惯\n'+
+            '1. （建议1，附理由）\n'+
+            '2. （建议2，附理由）\n'+
+            '3. （建议3，附理由）\n\n'+
+            '### ⚠️ 注意事项\n'+
+            '- （需要警惕的问题1）\n'+
+            '- （需要警惕的问题2）\n\n'+
+            basicInfo+'\n\n'+
+            '【近7天数据】\n'];
+        for(var d=6;d>=0;d--){
+            var dt=new Date();dt.setDate(dt.getDate()-d);
+            var ds=dt.toISOString().slice(0,10);
+            lines2.push('\n--- '+ds.slice(5)+' ---');
+            lines2.push(buildDailyData(ds,d===0));
+        }
+        return lines2.join('\n');
+    }
+    return '';
+}
+
+async function generateAIReport(type){
     var containerId='ai-report-'+type;
     var btnId='ai-gen-'+type;
     var container=document.getElementById(containerId);
@@ -2078,44 +2284,11 @@ async function generateAIReport(type){
     if(btn) btn.disabled=true;
     container.innerHTML='<div style="text-align:center;padding:30px;"><div style="font-size:28px;margin-bottom:10px;" class="pulse">🤖</div><p style="color:var(--text-secondary);">AI 正在分析...</p></div>';
 
-    // 准备数据
-    var today=getTodayStr();
-    var lw=getLatestWeight();
-    var todayDiets=appData.diets.filter(function(d){return d.date===today;});
-    var todayCal=todayDiets.reduce(function(s,d){return s+(parseInt(d.calories)||0);},0);
-    var todayExercises=appData.exercises.filter(function(e){return e.date===today;});
-    var todayNut=getTodayNutrients(today);
-
-    var dataSummary='用户: '+s.name+'\n'+
-        '性别: '+(s.gender==='male'?'男':'女')+'\n'+
-        '身高: '+s.height+'cm, 当前体重: '+(lw?lw.weight+'kg':'未知')+', 目标体重: '+s.targetWeight+'kg\n'+
-        '体脂率: '+(lw?lw.bodyfat+'%':'未知')+', BMI: '+(lw?lw.bmi:'未知')+'\n'+
-        '今日摄入: '+todayCal+' kcal (目标: '+s.calorieTarget+' kcal)\n'+
-        '今日营养素: 蛋白质'+Math.round(todayNut.protein)+'g, 碳水'+Math.round(todayNut.carbs)+'g, 脂肪'+Math.round(todayNut.fat)+'g\n'+
-        '今日运动: '+todayExercises.length+' 项\n';
-
-    var prompt='';
-    if(type==='daily'){
-        prompt='你是专业的健身教练和营养师。请根据以下数据生成今日分析报告，包括：1.数据总结 2.优缺点分析 3.明天的建议。用中文回答，语气亲切专业。\n\n'+dataSummary;
-    }else if(type==='weekly'){
-        var weekAgo=new Date();weekAgo.setDate(weekAgo.getDate()-7);
-        var weekStr=weekAgo.toISOString().slice(0,10);
-        var ww=appData.weights.filter(function(w){return w.date>=weekStr;});
-        var wd=appData.diets.filter(function(d){return d.date>=weekStr;});
-        var we=appData.exercises.filter(function(e){return e.date>=weekStr;});
-        var weekCal=wd.reduce(function(s,d){return s+(parseInt(d.calories)||0);},0);
-        var weekPro=wd.reduce(function(s,d){return s+(parseFloat(d.protein)||0);},0);
-        var weekCarb=wd.reduce(function(s,d){return s+(parseFloat(d.carbs)||0);},0);
-        var weekFat=wd.reduce(function(s,d){return s+(parseFloat(d.fat)||0);},0);
-        var weekChange=ww.length>=2?(ww[ww.length-1].weight-ww[0].weight).toFixed(1):'未知';
-        prompt='你是专业的健身教练。请根据以下本周数据生成周度分析报告，包括：1.本周体重变化 2.饮食运动总结 3.下周调整建议。用中文回答。\n\n'+dataSummary+'本周体重变化: '+weekChange+'kg\n本周总运动次数: '+we.length+'\n本周总摄入: '+weekCal+' kcal\n本周营养素总摄入: 蛋白质'+Math.round(weekPro)+'g, 碳水'+Math.round(weekCarb)+'g, 脂肪'+Math.round(weekFat)+'g';
-    }else{
-        prompt='你是专业的健身教练和营养师。请根据以下数据给出改进建议，包括：1.饮食优化建议 2.运动调整建议 3.生活习惯建议 4.需要注意的事项。用中文回答，语气亲切。\n\n'+dataSummary;
-    }
+    var prompt=buildReportPrompt(type);
 
     // 使用流式传输
     try{
-        var sysPrompt='你是专业的健身教练和营养师，名叫"MIMO"。请用中文回答，语气亲切专业。使用 Markdown 格式输出。';
+        var sysPrompt='你是专业的健身教练和营养师。请严格按照用户给出的模板格式输出，不要添加额外章节标题，不要自行总结或计算平均值等派生数据。只基于提供的原始数据进行分析。用中文回答，语气亲切专业。使用 Markdown 格式输出。';
         var resp=await fetch(API_BASE_URL+'/api/chat/stream',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
@@ -2271,8 +2444,14 @@ function renderCompletionReport() {
     var pct=target>0?((lost/target)*100).toFixed(0):0;
     var td=new Date(s.targetDate), now=new Date();
     var daysLeft=Math.max(0,Math.ceil((td-now)/(1000*60*60*24)));
+    // 记录天数：所有记录（体重+饮食+运动）的去重日期数
+    var allDates={};
+    appData.weights.forEach(function(w){if(w.date)allDates[w.date]=1;});
+    appData.diets.forEach(function(d){if(d.date)allDates[d.date]=1;});
+    appData.exercises.forEach(function(e){if(e.date)allDates[e.date]=1;});
+    var recordDays=Object.keys(allDates).length;
     c.innerHTML='<div class="grid-3" style="margin-bottom:20px;">'+
-        '<div class="stat-card"><div class="stat-label">📅 记录天数</div><div class="stat-value">'+appData.weights.length+' 天</div></div>'+
+        '<div class="stat-card"><div class="stat-label">📅 记录天数</div><div class="stat-value">'+recordDays+' 天</div></div>'+
         '<div class="stat-card"><div class="stat-label">📉 已减重</div><div class="stat-value" style="color:var(--accent-green);">'+lost+' kg</div></div>'+
         '<div class="stat-card"><div class="stat-label">⏰ 距离目标</div><div class="stat-value" style="color:var(--accent-blue);">'+daysLeft+' 天</div></div></div>'+
         '<div><p style="color:var(--text-secondary);margin-bottom:8px;">总体进度</p>'+
@@ -2286,6 +2465,9 @@ function renderWeeklyReport() {
     var ww=appData.weights.filter(function(w){return w.date>=was;});
     var wd=appData.diets.filter(function(d){return d.date>=was;});
     var we=appData.exercises.filter(function(e){return e.date>=was;});
+    // 运动天数：去重日期
+    var weDays={}; we.forEach(function(e){if(e.date)weDays[e.date]=1;});
+    var exerciseDayCount=Object.keys(weDays).length;
     var tc=wd.reduce(function(s,d){return s+(parseInt(d.calories)||0);},0);
     var ac=wd.length>0?Math.round(tc/7):0;
     var wc='--';
@@ -2293,9 +2475,9 @@ function renderWeeklyReport() {
     c.innerHTML='<div class="grid-3" style="margin-bottom:16px;">'+
         '<div class="stat-card"><div class="stat-label">⚖️ 体重变化</div><div class="stat-value" style="color:'+(parseFloat(wc)<=0?'var(--accent-green)':'var(--accent-red)')+';">'+wc+' kg</div></div>'+
         '<div class="stat-card"><div class="stat-label">🍽️ 平均每日摄入</div><div class="stat-value" style="color:var(--accent-orange);">'+ac+' kcal</div></div>'+
-        '<div class="stat-card"><div class="stat-label">🏋️ 运动天数</div><div class="stat-value" style="color:var(--accent-blue);">'+we.length+' 天</div></div></div>'+
+        '<div class="stat-card"><div class="stat-label">🏋️ 运动天数</div><div class="stat-value" style="color:var(--accent-blue);">'+exerciseDayCount+' 天</div></div></div>'+
         '<div style="background:rgba(59,130,246,0.08);border-radius:10px;padding:14px;"><h4 style="margin-bottom:6px;font-size:14px;">📊 周度分析</h4>'+
-        '<p style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• 本周共记录 <strong>'+ww.length+'</strong> 次体重<br>• 共记录 <strong>'+wd.length+'</strong> 次饮食<br>• 共运动 <strong>'+we.length+'</strong> 次<br>• 平均每日摄入 <strong>'+ac+'</strong> kcal（目标: '+appData.settings.calorieTarget+' kcal）</p></div>';
+        '<p style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• 本周共记录 <strong>'+ww.length+'</strong> 次体重<br>• 共记录 <strong>'+wd.length+'</strong> 次饮食<br>• 共运动 <strong>'+we.length+'</strong> 次（'+exerciseDayCount+' 天）<br>• 平均每日摄入 <strong>'+ac+'</strong> kcal（目标: '+appData.settings.calorieTarget+' kcal）</p></div>';
 
     // 周体重趋势图
     renderWeeklyWeightChart(ww);
@@ -2347,10 +2529,18 @@ function renderSettings() {
     document.getElementById('settings-height').value=s.height;
     document.getElementById('settings-start-weight').value=s.startWeight;
     document.getElementById('settings-target-weight').value=s.targetWeight;
-    document.getElementById('settings-start-date').value=s.startDate||'2026-06-16';
+    document.getElementById('settings-start-date').value=s.startDate||DEFAULT_SETTINGS.startDate;
     document.getElementById('settings-target-date').value=s.targetDate;
     document.getElementById('settings-calorie-target').value=s.calorieTarget;
     document.getElementById('settings-bmr').value=s.bmr||'--';
+    // 动态更新 BMR/TDEE/热量建议
+    var bmr=s.bmr||0;
+    var tdee=Math.round(bmr*1.4);
+    var cal=s.calorieTarget;
+    var deficit=tdee-cal;
+    document.getElementById('tip-bmr').textContent=bmr+' kcal';
+    document.getElementById('tip-tdee').textContent='~'+tdee+' kcal';
+    document.getElementById('tip-cal').textContent=cal+' kcal（缺口约 '+deficit+' kcal）';
     // 获取服务器信息
     fetchServerInfo();
 }
@@ -2419,6 +2609,9 @@ function saveSettings() {
     appData.settings.aiProvider='mimo';
     appData.settings.aiModel='mimo-v2.5';
     saveData();
+    syncBMR();
+    renderDashboard();
+    myAlert('设置已保存，已同步到所有设备','保存成功','✅');
 }
 // 自动计算基础代谢率（Mifflin-St Jeor 公式）
 // 从最新体重记录同步BMR到设置
