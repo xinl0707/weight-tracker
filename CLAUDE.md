@@ -96,3 +96,5 @@ node proxy-server.js
 - **数据保存**：每次修改 appData 后必须调用 `saveData()`，它会同时写入 localStorage 和同步到服务器
 - **图表管理**：使用 `destroyChart()` 销毁旧图表再重建，避免 Chart.js 内存泄漏
 - **中文注释**：所有新增代码的注释必须使用中文
+- **禁止手写压缩代码**：严禁在 index.html 中手写压缩/混淆的 JS 代码（如 QR 生成器、加密算法等）。这类代码一旦有语法错误会导致整个 `<script>` 块崩溃，页面完全不可用。必须使用 CDN 引入经过验证的库，或在 proxy-server.js 中实现后通过 API 调用
+- **JS 语法预检**：新增任何 JS 代码后，必须先用 `node -e "new Function(...)"` 验证语法，确认无误后再提交

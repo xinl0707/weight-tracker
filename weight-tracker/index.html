@@ -114,6 +114,21 @@
             background: var(--bg-card); border-radius: var(--radius);
             padding: 20px; border: 1px solid rgba(255,255,255,0.04);
         }
+        /* 环形进度条（包裹在 stat-card 外圈） */
+        .stat-card.progress-ring {
+            position: relative; border: none; overflow: visible; z-index: 0;
+            background: none;
+        }
+        .stat-card.progress-ring .ring-svg {
+            position: absolute; top: -5px; left: -5px;
+            width: calc(100% + 10px); height: calc(100% + 10px);
+            z-index: 1; pointer-events: none; overflow: visible;
+        }
+        .stat-card.progress-ring > .stat-label,
+        .stat-card.progress-ring > .stat-value,
+        .stat-card.progress-ring > .stat-change {
+            position: relative; z-index: 2;
+        }
         .stat-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
         .stat-value { font-size: 28px; font-weight: 700; line-height: 1.2; }
         .stat-change { font-size: 12px; margin-top: 6px; }
@@ -414,7 +429,11 @@
                 <div class="stat-value" id="stat-current-weight">--</div>
                 <div class="stat-change" id="stat-weight-change"></div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card progress-ring" id="card-target-weight">
+                <svg id="ring-svg" class="ring-svg" fill="none">
+                    <rect id="ring-bg" style="fill:var(--bg-card)"/>
+                    <path id="ring-rect" stroke="#10b981" stroke-width="6" stroke-linecap="round"/>
+                </svg>
                 <div class="stat-label">🎯 目标体重</div>
                 <div class="stat-value" style="color:var(--accent-green);" id="stat-target-weight">65 kg</div>
                 <div class="stat-change" id="stat-target-progress"></div>
@@ -1239,6 +1258,55 @@ function refreshPageData(page) {
 }
 
 /* ====== 仪表盘 ====== */
+/* ====== 环形进度条（SVG 自适应，顺时针，顶部起始） ====== */
+function updateRingProgress(pct) {
+    var card = document.getElementById('card-target-weight');
+    var svg  = document.getElementById('ring-svg');
+    var bg   = document.getElementById('ring-bg');
+    var fill  = document.getElementById('ring-rect');
+    if (!card || !svg || !bg || !fill) return;
+
+    var W = card.offsetWidth;
+    var H = card.offsetHeight;
+    if (W === 0 || H === 0) return;
+
+    // viewBox 与实际尺寸一致，确保像素对齐
+    var vw = W + 10, vh = H + 10;
+    svg.setAttribute('viewBox', '0 0 ' + vw + ' ' + vh);
+
+    var r = 16; // 与卡片 border-radius 一致
+    var sw = 6; // 描边宽度
+    var p = 5 + sw / 2; // 路径内缩 3px，使描边完全在卡片内部
+    var pw = W - sw, ph = H - sw; // 路径尺寸
+
+    // 背景矩形（与卡片外框完全对齐）
+    bg.setAttribute('x', 5); bg.setAttribute('y', 5);
+    bg.setAttribute('width', W); bg.setAttribute('height', H);
+    bg.setAttribute('rx', r); bg.setAttribute('ry', r);
+
+    // 顺时针圆角矩形路径（sweep-flag=1，内缩使描边外缘对齐）
+    var d = 'M ' + (p + r) + ' ' + p +
+        ' L ' + (p + pw - r) + ' ' + p +
+        ' A ' + r + ' ' + r + ' 0 0 1 ' + (p + pw) + ' ' + (p + r) +
+        ' L ' + (p + pw) + ' ' + (p + ph - r) +
+        ' A ' + r + ' ' + r + ' 0 0 1 ' + (p + pw - r) + ' ' + (p + ph) +
+        ' L ' + (p + r) + ' ' + (p + ph) +
+        ' A ' + r + ' ' + r + ' 0 0 1 ' + p + ' ' + (p + ph - r) +
+        ' L ' + p + ' ' + (p + r) +
+        ' A ' + r + ' ' + r + ' 0 0 1 ' + (p + r) + ' ' + p +
+        ' Z';
+    fill.setAttribute('d', d);
+
+    // 圆角矩形周长（基于路径尺寸）
+    var perimeter = 2 * (pw + ph) + 2 * Math.PI * r - 8 * r;
+    // 路径从左上角圆弧中点出发，到上边中点的距离
+    var topHalf = (W - 2 * r) / 2 + (Math.PI * r) / 4;
+    var greenLen = Math.round(perimeter * pct / 100);
+    fill.setAttribute('stroke-dasharray', greenLen + ' ' + perimeter);
+    // 负 dashoffset = 将起点从左上角移到上边正中
+    fill.style.strokeDashoffset = -Math.round(topHalf);
+}
+
 function renderDashboard() {
     var now = new Date();
     var wk = ['日','一','二','三','四','五','六'];
@@ -1264,6 +1332,7 @@ function renderDashboard() {
         var pct=Math.max(0,Math.min(100,(lost/total)*100));
         document.getElementById('stat-target-progress').textContent='完成 '+pct.toFixed(0)+'%';
         document.getElementById('stat-target-progress').className='stat-change down';
+        updateRingProgress(pct);
         document.getElementById('stat-lost').textContent=lost.toFixed(1)+' kg';
         document.getElementById('stat-lost-progress').textContent='目标 '+total.toFixed(1)+' kg';
         document.getElementById('stat-lost-progress').className='stat-change down';
@@ -3025,6 +3094,20 @@ document.addEventListener('DOMContentLoaded',function(){
     setInterval(function(){
         fetch(API_BASE_URL+'/api/ping').catch(function(){});
     },30000);
+    // 环形进度条自适应：卡片尺寸变化时重新计算
+    var ringCard = document.getElementById('card-target-weight');
+    if (ringCard && window.ResizeObserver) {
+        new ResizeObserver(function() {
+            var lw = getLatestWeight();
+            var s = appData.settings;
+            if (lw) {
+                var total = parseFloat((s.startWeight - s.targetWeight).toFixed(1));
+                var lost = parseFloat((s.startWeight - lw.weight).toFixed(1));
+                var pct = Math.max(0, Math.min(100, (lost / total) * 100));
+                updateRingProgress(pct);
+            }
+        }).observe(ringCard);
+    }
 });
 </script>
 
