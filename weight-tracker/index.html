@@ -971,13 +971,11 @@
 
 
 <!-- ====== JavaScript ====== -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script>
 /* ====== 数据管理 ====== */
 var API_BASE_URL = window.location.protocol + '//' + window.location.hostname + ':3000';
 var STORAGE_KEY = 'weightloss_tracker_v2';
-
-/* ====== 极简 QR 码生成器（纯 JS，无外部依赖） ====== */
-var QRCode=(function(){var A=function(){var r=function(g,a){var c=65535&g+a;return(g>>16)+(a>>16)+(c>>16)<<16|65535&c},s=function(g,a,c){return g<<c|g>>>32-a};var t=function(g,a){var c=[],d,e,f,b,h;d=g.length;for(f=0;f<d;f+=1){e=g[f];for(b=0;b<16;b+=1){c.push(e>>>15-b&1)}}e=a.length;for(f=0;f<e;f+=1){h=a.charCodeAt(f);for(b=0;b<8;b+=1){c.push(h>>>7-b&1)}}c.push(1);while(c.length%512!==448){c.push(0)}c.push(d>>>29);c.push(d<<3&4294967295);for(f=0;f<c.length;f+=32){}return c};var u=function(g){var a,c,d,e,f,b,h,k,l,m,n,p,q,v,w,x,y,z,B,C,D,E,F,G,H,I,J,K,L=[];a=1732584193;c=4023233417;d=2562383102=e=271733878;f=3285377520;b=[];for(x=0;x<g.length;x+=32){b.push(g.slice(x,x+32))}for(y=0;y<b.length;y++){z=b[y];B=[];for(C=0;C<16;C++){D=z[C*32]*2147483648;for(E=1;E<32;E++){D+=z[C*32+E]*Math.pow(2,31-E)}B.push(D)}for(C=16;C<64;C++){F=s(B[C-2],17);G=s(B[C-2],19);H=B[C-2]>>>10;I=F^G^H;J=s(B[C-15],7);K=s(B[C-15],18);L=B[C-15]>>>3;M=J^K^L;B.push(r(r(r(B[C-16],I),B[C-7]),M))}N=a;O=c;P=d;Q=e;R=f;S=b;T=d;U=e;for(C=0;C<64;C++){V=s(R,6);W=s(R,11);X=s(R,25);aa=R&R^~R&f;ba=r(r(r(r(Q,V^W^X),aa),[1116352408,1899447441,3049323471,3921009573,961987163,1508970993,2453635748,2870763221,3624381080,310598401,607225278,1426881987,1925078388,2162078206,2614888103,3248222580,3835390401,4022224774,264347078,604807628,770255983,1249150122,1555081692,1996064986,2554220882,2821834349,2952996808,3210313671,3336571891,3584528711,113926993,338241895,666307205,773529912,1294757372,1396182291,1695183700,1986661051,2177026350,2456956037,2730485921,2820302411,3259730800,3345764771,3516065817,3600352804,4094571909,275423344,430227734,506948616,659060556,883997877,958139571,1322822218,1537002063,1747873779,1955562222,2024104815,2227730452,2361852424,2428436474,2756734187,3204031479,3329325298][C]),B[C]);Q=O;O=N;N=T;T=R;R=r(S,ba);S=P;P=O;O=N;N=T;T=R;R=r(R,ba)}a=r(a,N);c=r(c,O);d=r(d,P);e=r(e,Q);f=r(f,R)}return[a,c,d,e,f]};var v=function(g){var a="",c;for(c=0;c<g.length;c++){a+=("00000000"+g[c].toString(16)).slice(-8)}return a};return function(g){var a=t(g);var c=u(a);return v(c)}}();function drawQR(text,canvas,size){size=size||180;var ver=1;var data=[];for(var i=0;i<text.length;i++){var c=text.charCodeAt(i);if(c<128)data.push(c);else if(c<2048){data.push(192|c>>6);data.push(128|63&c)}else{data.push(224|c>>12);data.push(128|c>>6&63);data.push(128|63&c)}}var cap=[17,32,53,78,106,134,154,192,230,271];var ec=[7,10,15,20,26,18,20,24,30,18];var ver=1;for(var i=0;i<cap.length;i++){if(data.length<=cap[i]){ver=i+1;break}}var n=ver*4+17;var mat=[];var used=[];for(var i=0;i<n;i++){mat[i]=[];used[i]=[];for(var j=0;j<n;j++){mat[i][j]=0;used[i][j]=false}}function setModule(r,c,v){if(r>=0&&r<n&&c>=0&&c<n){mat[r][c]=v?1:0;used[r][c]=true}}function isUsed(r,c){return r>=0&&r<n&&c>=0&&c<n&&used[r][c]}for(var i=0;i<n;i++){setModule(i,6,i%2===0);setModule(6,i,i%2===0)}for(var r=0;r<8;r++){for(var c=0;c<8;c++){var v=(r<=6&&c<=6)||(r<=6&&c>=n-8)||(r>=n-8&&c<=6);setModule(r,c,v&&((r===0||r===6)&&(c>=0&&c<=6)||(c===0||c===6)&&(r>=0&&r<=6)||(r>=2&&r<=4&&c>=2&&c<=4)));setModule(r,n-1-c,v&&((r===0||r===6)&&(c>=0&&c<=6)||(c===0||c===6)&&(r>=0&&r<=6)||(r>=2&&r<=4&&c>=2&&c<=4)));setModule(n-1-r,c,v&&((r===0||r===6)&&(c>=0&&c<=6)||(c===0||c===6)&&(r>=0&&r<=6)||(r>=2&&r<=4&&c>=2&&c<=4)))}}var bits=[];for(var i=0;i<data.length;i++){for(var b=7;b>=0;b--){bits.push(data[i]>>b&1)}}var idx=0;var right=n-1;var upward=true;while(right>=0){if(right===6)right--;var rows=[];if(upward){for(var r=n-1;r>=0;r--)rows.push(r)}else{for(var r=0;r<n;r++)rows.push(r)}for(var ri=0;ri<rows.length;ri++){var r=rows[ri];for(var dc=0;dc<2;dc++){var c=right-dc;if(!isUsed(r,c)){setModule(r,c,idx<bits.length?bits[idx]:0);idx++}}}upward=!upward;right-=2}canvas.width=size;canvas.height=size;var ctx=canvas.getContext('2d');var modSize=size/n;ctx.fillStyle='white';ctx.fillRect(0,0,size,size);ctx.fillStyle='black';for(var r=0;r<n;r++){for(var c=0;c<n;c++){if(mat[r][c]){ctx.fillRect(c*modSize,r*modSize,modSize+0.5,modSize+0.5)}}}}
 
 /* ====== 公共常量 ====== */
 var MEAL_LABELS = {breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍪 加餐'};
@@ -2302,9 +2300,36 @@ function showQRCode(){
     if(!_serverInfo) return;
     var url=_serverInfo.url;
     var canvas=document.getElementById('qr-code-canvas');
-    if(canvas) drawQR(url,canvas,180);
     var urlEl=document.getElementById('qr-code-url');
     if(urlEl) urlEl.textContent=url;
+    // 使用 CDN 库生成二维码
+    if(canvas&&typeof qrcode!=='undefined'){
+        try{
+            var qr=qrcode(0,'M');
+            qr.addData(url);
+            qr.make();
+            var ctx=canvas.getContext('2d');
+            var cellSize=Math.floor(180/(qr.getModuleCount()+8));
+            var margin=Math.floor((180-cellSize*qr.getModuleCount())/2);
+            canvas.width=180;canvas.height=180;
+            ctx.fillStyle='white';
+            ctx.fillRect(0,0,180,180);
+            ctx.fillStyle='black';
+            for(var r=0;r<qr.getModuleCount();r++){
+                for(var c=0;c<qr.getModuleCount();c++){
+                    if(qr.isDark(r,c)){
+                        ctx.fillRect(margin+c*cellSize,margin+r*cellSize,cellSize,cellSize);
+                    }
+                }
+            }
+        }catch(e){
+            // 降级：显示 URL 文本
+            if(canvas) canvas.style.display='none';
+        }
+    }else if(canvas){
+        // CDN 未加载，降级
+        canvas.style.display='none';
+    }
 }
 function saveSettings() {
     var startDate=document.getElementById('settings-start-date').value;
