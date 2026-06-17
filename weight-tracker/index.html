@@ -2203,6 +2203,9 @@ function _maxAddMsg(role,text){
     return div;
 }
 
+// 隐藏 prompt 的标识文本（用于过滤）
+var _MAX_INIT_PROMPT='用户打开了 Max 健身指导。';
+
 // 打开 Max 教练
 function openMaxCoach(){
     _maxStreaming=false;
@@ -2214,20 +2217,21 @@ function openMaxCoach(){
     // 构建系统消息（每次都用最新数据）
     var sysContent=MAX_BASE_PROMPT+'\n\n'+buildMaxData();
 
-    // 恢复历史对话（保留用户和AI消息，但替换系统消息为最新数据）
+    // 恢复历史对话
     if(appData.maxCoachHistory&&appData.maxCoachHistory.length>0){
         _maxHistory=[];
-        // 找到旧的系统消息并替换
-        var hasSystem=false;
+        // 替换系统消息为最新数据，过滤掉隐藏 prompt
         appData.maxCoachHistory.forEach(function(msg){
             if(msg.role==='system'){
                 _maxHistory.push({role:'system',content:sysContent});
-                hasSystem=true;
+            }else if(msg.role==='user'&&msg.content.indexOf(_MAX_INIT_PROMPT)===0){
+                // 跳过残留的隐藏 prompt
             }else{
                 _maxHistory.push(msg);
             }
         });
-        if(!hasSystem){
+        // 确保有系统消息
+        if(!_maxHistory.some(function(m){return m.role==='system';})){
             _maxHistory.unshift({role:'system',content:sysContent});
         }
         // 渲染历史消息（跳过 system）
@@ -2239,7 +2243,7 @@ function openMaxCoach(){
         // 新对话
         _maxHistory=[{role:'system',content:sysContent}];
         // 显示欢迎占位
-        var welcomeDiv=_maxAddMsg('ai','你好！正在分析你的数据...');
+        var welcomeDiv=_maxAddMsg('ai','正在分析你的数据...');
         // 发送初始 prompt 并流式显示
         _maxSendInit(welcomeDiv);
     }
@@ -2370,6 +2374,10 @@ function _maxReadStream(resp,targetDiv){
 // 关闭教练
 function closeMaxCoach(){
     _maxStreaming=false;
+    // 保存前清除残留的隐藏 prompt
+    _maxHistory=_maxHistory.filter(function(msg){
+        return !(msg.role==='user'&&msg.content.indexOf(_MAX_INIT_PROMPT)===0);
+    });
     appData.maxCoachHistory=_maxHistory;
     saveData();
     closeModal('modal-max-coach');
