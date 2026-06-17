@@ -671,6 +671,17 @@
                     <div id="ai-report-advice" style="flex:1;overflow-y:auto;max-height:500px;font-size:13px;"><p style="text-align:center;color:var(--text-muted);padding:20px;">点击生成</p></div>
                 </div>
             </div>
+            <!-- Max 健身指导入口 -->
+            <div class="card" style="margin-top:16px;background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(59,130,246,0.08));border:1px solid rgba(139,92,246,0.15);cursor:pointer;" onclick="openMaxCoach()">
+                <div style="display:flex;align-items:center;gap:16px;">
+                    <div style="font-size:36px;">🏋️</div>
+                    <div style="flex:1;">
+                        <div style="font-size:16px;font-weight:700;">Max 健身指导</div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin-top:4px;">基于你全部历史数据的 AI 一对一专业健身对话</p>
+                    </div>
+                    <div class="btn btn-primary" style="flex-shrink:0;">开始对话</div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -974,6 +985,32 @@
             <button class="btn btn-primary" onclick="generateFinalPlan()" id="btn-generate-plan" style="width:100%;margin-top:8px;display:none;">
                 ✅ 确认并导入此计划
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ====== Max 健身指导对话框 ====== -->
+<div class="modal-overlay" id="modal-max-coach" data-no-overlay-close style="z-index:250;">
+    <div class="modal" style="max-width:750px;height:90vh;display:flex;flex-direction:column;padding:0;">
+        <div style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:20px;">🏋️</span>
+                <div>
+                    <div style="font-size:15px;font-weight:600;">Max 健身指导</div>
+                    <div style="font-size:11px;color:var(--text-muted);">基于你全部历史数据的 AI 一对一专业健身对话</div>
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeMaxCoach()">✕</button>
+        </div>
+        <!-- 对话消息区 -->
+        <div id="max-coach-messages" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
+        </div>
+        <!-- 底部输入区 -->
+        <div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,0.06);flex-shrink:0;">
+            <div style="display:flex;gap:8px;">
+                <input class="input" id="max-coach-input" placeholder="向 Max 提问..." style="flex:1;" onkeydown="if(event.key==='Enter'&&!event.shiftKey)sendMaxMessage()">
+                <button class="btn btn-primary btn-sm" onclick="sendMaxMessage()">发送</button>
+            </div>
         </div>
     </div>
 </div>
@@ -2071,6 +2108,198 @@ function renderMarkdownTable(rows){
     });
     html+='</table></div>';
     return html;
+}
+
+/* ====== Max 健身指导（AI 对话） ====== */
+var _maxHistory=[];
+var _maxStreaming=false;
+
+// 组装全量历史数据（最近30天完整明细 + 更早的每周摘要）
+function buildMaxData(){
+    var basicInfo=buildBasicInfo();
+    var today=new Date();
+    var lines=[basicInfo+'\n【历史数据】'];
+
+    // 30天前的日期
+    var d30=new Date();d30.setDate(d30.getDate()-30);
+    var ds30=d30.toISOString().slice(0,10);
+
+    // 更早的数据：按周汇总
+    var earlyWeights=appData.weights.filter(function(w){return w.date<ds30;});
+    var earlyDiets=appData.diets.filter(function(d){return d.date<ds30;});
+    var earlyExercises=appData.exercises.filter(function(e){return e.date<ds30;});
+    if(earlyWeights.length>0||earlyDiets.length>0||earlyExercises.length>0){
+        lines.push('\n--- 30天以前数据摘要 ---');
+        // 按周分组
+        var weeks={};
+        var addEarlyWeekEntry=function(dateStr,type,data){
+            var d=new Date(dateStr+'T00:00:00');
+            var weekStart=new Date(d);weekStart.setDate(d.getDate()-d.getDay());
+            var key=weekStart.toISOString().slice(0,10);
+            if(!weeks[key]) weeks[key]={weights:[],diets:[],exercises:[]};
+            weeks[key][type].push(data);
+        };
+        earlyWeights.forEach(function(w){addEarlyWeekEntry(w.date,'weights',w);});
+        earlyDiets.forEach(function(d){addEarlyWeekEntry(d.date,'diets',d);});
+        earlyExercises.forEach(function(e){addEarlyWeekEntry(e.date,'exercises',e);});
+        var weekKeys=Object.keys(weeks).sort();
+        weekKeys.forEach(function(wk){
+            var w=weeks[wk];
+            var wWeights=w.weights.map(function(x){return x.weight;});
+            var avgWeight=wWeights.length>0?(wWeights.reduce(function(a,b){return a+b;},0)/wWeights.length).toFixed(1):'无';
+            var totalCal=w.diets.reduce(function(s,d){return s+(parseInt(d.calories)||0);},0);
+            var exCount=w.exercises.length;
+            lines.push('周 '+wk+': 平均体重'+avgWeight+'kg | 摄入'+totalCal+'kcal | 运动'+exCount+'次');
+        });
+    }
+
+    // 最近30天：完整明细
+    lines.push('\n--- 最近30天完整数据 ---');
+    for(var d=29;d>=0;d--){
+        var dt=new Date();dt.setDate(dt.getDate()-d);
+        var ds=dt.toISOString().slice(0,10);
+        var dayData=buildDailyData(ds,d===0);
+        // 只包含有数据的天
+        var hasData=appData.weights.some(function(w){return w.date===ds;})||
+                    appData.diets.some(function(dd){return dd.date===ds;})||
+                    appData.exercises.some(function(e){return e.date===ds;});
+        if(hasData){
+            lines.push('\n--- '+ds.slice(5)+' ---');
+            lines.push(dayData);
+        }
+    }
+    return lines.join('\n');
+}
+
+// Max 系统 Prompt
+var MAX_SYS_PROMPT='你是一位专业的健身教练和营养师，拥有运动科学与营养学背景。\n\n'+
+    '你的工作方式：\n'+
+    '- 你通过用户的历史体重、饮食、运动数据来分析问题并给出建议\n'+
+    '- 你说人话，不打官腔，像朋友聊天一样自然，但专业度不丢\n'+
+    '- 你善于发现数据中的规律和问题，用数据说话\n'+
+    '- 你的建议必须具体、可执行，比如"午餐可以加一个鸡蛋"而不是"注意蛋白质摄入"\n'+
+    '- 发现异常数据（如突然暴瘦/暴食/连续不运动）时主动提醒\n'+
+    '- 涉及健康风险时建议用户咨询专业医生，不擅自下诊断\n\n'+
+    '你的底线：\n'+
+    '- 只基于用户提供的真实数据分析，不编造不猜测\n'+
+    '- 不推荐极端节食或过度运动\n'+
+    '- 不做医疗诊断，不推荐药物\n'+
+    '- 尊重用户节奏，不强迫，给建议而非命令';
+
+function openMaxCoach(){
+    _maxHistory=[];
+    _maxStreaming=false;
+    document.getElementById('max-coach-messages').innerHTML='';
+    document.getElementById('max-coach-input').value='';
+    openModal('modal-max-coach');
+
+    // 组装全量数据并发送首条消息
+    var allData=buildMaxData();
+    _maxHistory.push({role:'system',content:MAX_SYS_PROMPT+'\n\n'+allData});
+    _maxHistory.push({role:'user',content:'用户打开了 Max 健身指导。请先简要总结用户当前状态（2-3句话），然后问用户想聊什么。不要长篇大论复述数据，用户自己能看到。'});
+
+    // 显示欢迎消息
+    addMaxMessage('ai','你好！我是 Max，你的 AI 健身教练 💪\n\n我已读取了你的全部历史数据，正在分析中...');
+    // 自动发送首条消息获取 AI 回复
+    _streamMaxReply();
+}
+
+function closeMaxCoach(){
+    _maxStreaming=false;
+    closeModal('modal-max-coach');
+}
+
+function addMaxMessage(type,text){
+    var div=document.createElement('div');
+    div.className='planner-msg '+type;
+    if(type==='ai'){
+        div.innerHTML=renderMarkdown(text);
+    }else{
+        div.innerHTML=text.replace(/\n/g,'<br>');
+    }
+    document.getElementById('max-coach-messages').appendChild(div);
+    div.scrollIntoView({behavior:'smooth'});
+    return div;
+}
+
+function addMaxTyping(){
+    var div=document.createElement('div');
+    div.className='planner-msg ai';
+    div.id='max-typing';
+    div.innerHTML='<div style="display:flex;align-items:center;gap:8px;"><div class="typing-dots"><span></span><span></span><span></span></div><span style="font-size:12px;color:var(--text-muted);">Max 正在思考...</span></div>';
+    document.getElementById('max-coach-messages').appendChild(div);
+    div.scrollIntoView({behavior:'smooth'});
+    return div;
+}
+
+async function sendMaxMessage(){
+    if(_maxStreaming) return;
+    var input=document.getElementById('max-coach-input');
+    var text=input.value.trim();
+    if(!text) return;
+    input.value='';
+    addMaxMessage('user',text);
+    _maxHistory.push({role:'user',content:text});
+    await _streamMaxReply();
+}
+
+async function _streamMaxReply(){
+    _maxStreaming=true;
+    var typingDiv=addMaxTyping();
+    try{
+        var messages=[];
+        _maxHistory.forEach(function(h){messages.push(h);});
+        var resp=await fetch(API_BASE_URL+'/api/chat/stream',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({messages:messages})
+        });
+        if(!resp.ok) throw new Error('API请求失败 ('+resp.status+')');
+        var fullText='';
+        var renderPending=false;
+        var reader=resp.body.getReader();
+        var decoder=new TextDecoder();
+        var buffer='';
+        // 替换 typing 为流式容器
+        typingDiv.innerHTML='<div id="max-stream" style="line-height:1.8;font-size:14px;"></div>';
+        var streamDiv=document.getElementById('max-stream');
+        while(true){
+            var chunk=await reader.read();
+            if(chunk.done) break;
+            buffer+=decoder.decode(chunk.value,{stream:true});
+            var lines=buffer.split('\n');
+            buffer=lines.pop();
+            for(var i=0;i<lines.length;i++){
+                var line=lines[i].trim();
+                if(line.indexOf('data: ')===0){
+                    var data=line.slice(6);
+                    if(data==='[DONE]') continue;
+                    try{
+                        var json=JSON.parse(data);
+                        if(json.content){
+                            fullText+=json.content;
+                            if(!renderPending){
+                                renderPending=true;
+                                requestAnimationFrame(function(){
+                                    streamDiv.innerHTML=renderMarkdown(fullText);
+                                    streamDiv.parentElement.scrollIntoView({behavior:'smooth'});
+                                    renderPending=false;
+                                });
+                            }
+                        }
+                        if(json.error) throw new Error(json.error);
+                    }catch(e){
+                        if(e.message&&!e.message.includes('JSON')) throw e;
+                    }
+                }
+            }
+        }
+        streamDiv.innerHTML=renderMarkdown(fullText);
+        _maxHistory.push({role:'assistant',content:fullText});
+    }catch(err){
+        typingDiv.innerHTML='<p style="color:var(--accent-red);">❌ '+err.message+'</p>';
+    }
+    _maxStreaming=false;
 }
 
 /* ====== AI 报告：数据组装 + 统一 Prompt ====== */
