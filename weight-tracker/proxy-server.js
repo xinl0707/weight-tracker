@@ -61,7 +61,7 @@ var SHUTDOWN_TIMEOUT = 60000; // 60秒无心跳则关闭
 setInterval(function() {
     var elapsed = Date.now() - lastPing;
     if (elapsed > SHUTDOWN_TIMEOUT) {
-        console.log('\n  [Auto Shutdown] No heartbeat for 60s. Browser closed. Shutting down...\n');
+        console.log('\n  💤 60秒无心跳，浏览器已关闭，服务器退出中...\n');
         server.close();
         process.exit(0);
     }
@@ -310,7 +310,7 @@ var server = http.createServer(function(req, res) {
                 'Connection': 'keep-alive',
                 'Access-Control-Allow-Origin': '*'
             });
-            console.log('[Chat Stream] Streaming response...');
+            console.log('  💬 流式对话响应中...');
             callMiMOStream(body.messages, res);
         }).catch(function(err) {
             sendJSON(res, 500, { error: err.message });
@@ -346,7 +346,7 @@ var server = http.createServer(function(req, res) {
         readBody(req).then(function(body) {
             saveServerData(body);
             broadcastSSE('data-updated', { timestamp: Date.now() });
-            console.log('[Data] Saved & broadcast to ' + sseClients.length + ' clients');
+            console.log('  💾 数据已保存，同步到 ' + sseClients.length + ' 个设备');
             sendJSON(res, 200, { ok: true });
         }).catch(function(err) {
             sendJSON(res, 500, { error: err.message });
@@ -371,9 +371,9 @@ var server = http.createServer(function(req, res) {
             }];
             var maxRetries = 3;
             function tryRequest(attempt) {
-                console.log('[Recognize] Image recognition request... (attempt ' + attempt + '/' + maxRetries + ')');
+                console.log('  📷 图片识别中... (第 ' + attempt + '/' + maxRetries + ' 次)');
                 return callMiMO(messages).catch(function(err) {
-                    console.error('[Recognize] Attempt ' + attempt + ' failed:', err.message);
+                    console.error('  ⚠️ 第 ' + attempt + ' 次识别失败:', err.message);
                     if (attempt < maxRetries) {
                         var delay = attempt * 1000;
                         return new Promise(function(r) { setTimeout(r, delay); }).then(function() {
@@ -386,11 +386,11 @@ var server = http.createServer(function(req, res) {
             return tryRequest(1);
         }).then(function(result) {
             if (result) {
-                console.log('[Recognize] Success');
+                console.log('  ✅ 识别成功');
                 sendJSON(res, 200, result);
             }
         }).catch(function(err) {
-            console.error('[Recognize] Failed after all retries:', err.message);
+            console.error('  ❌ 识别失败（已重试3次）:', err.message);
             sendJSON(res, 500, { error: err.message });
         });
         return;
@@ -413,15 +413,15 @@ var server = http.createServer(function(req, res) {
                 sendJSON(res, 400, { error: 'Missing prompt or messages' });
                 return;
             }
-            console.log('[Analyze] Request (' + (body.messages ? 'chat' : 'single') + ')...');
+            console.log('  🤖 AI 分析请求 (' + (body.messages ? '对话' : '单条') + ')...');
             return callMiMO(messages);
         }).then(function(result) {
             if (result) {
-                console.log('[Analyze] Success');
+                console.log('  ✅ 分析完成');
                 sendJSON(res, 200, { content: result.text || JSON.stringify(result) });
             }
         }).catch(function(err) {
-            console.error('[Analyze] Failed:', err.message);
+            console.error('  ❌ 分析失败:', err.message);
             sendJSON(res, 500, { error: err.message });
         });
         return;
@@ -444,7 +444,7 @@ var server = http.createServer(function(req, res) {
 // 处理端口占用
 server.on('error', function(err) {
     if (err.code === 'EADDRINUSE') {
-        console.log('\n  Port ' + PORT + ' is in use. Trying to kill existing process...\n');
+        console.log('\n  🔄 端口 ' + PORT + ' 被占用，正在尝试释放...\n');
         // 尝试关闭占用端口的进程（Windows）
         if (process.platform === 'win32') {
             require('child_process').exec('for /f "tokens=5" %a in (\'netstat -ano ^| findstr :' + PORT + '\') do taskkill /F /PID %a', function() {
@@ -454,11 +454,11 @@ server.on('error', function(err) {
                 }, 1000);
             });
         } else {
-            console.log('  Please manually kill the process using port ' + PORT);
+            console.log('  ❌ 无法自动释放，请手动关闭占用端口 ' + PORT + ' 的进程');
             process.exit(1);
         }
     } else {
-        console.error('Server error:', err);
+        console.error('  ❌ 服务器错误:', err);
     }
 });
 
@@ -479,16 +479,23 @@ server.listen(PORT, '0.0.0.0', function() {
     }
 
     console.log('');
-    console.log('  ========================================');
-    console.log('    Xinlu Weight Loss Plan - Server');
-    console.log('  ========================================');
-    console.log('');
-    console.log('  Local:   http://localhost:' + PORT);
-    console.log('  LAN:     http://' + lanIP + ':' + PORT);
-    console.log('  Model:   ' + MIMO_MODEL);
-    console.log('');
-    console.log('  Other devices on the same WiFi can access via LAN address');
-    console.log('  Do NOT close this window!');
+    console.log('  ╔══════════════════════════════════════════╗');
+    console.log('  ║                                          ║');
+    console.log('  ║    🌟 昕露的减重计划 · 服务已启动        ║');
+    console.log('  ║                                          ║');
+    console.log('  ╠══════════════════════════════════════════╣');
+    console.log('  ║                                          ║');
+    console.log('  ║    🏠 本地访问:  http://localhost:' + PORT + '    ║');
+    console.log('  ║    📱 局域网:    http://' + lanIP + ':' + PORT + '  ║');
+    console.log('  ║    🤖 AI 模型:   ' + MIMO_MODEL + '             ║');
+    console.log('  ║                                          ║');
+    console.log('  ╠══════════════════════════════════════════╣');
+    console.log('  ║                                          ║');
+    console.log('  ║    📌 同一 WiFi 下的设备可通过           ║');
+    console.log('  ║       局域网地址访问～                   ║');
+    console.log('  ║    ⚠️  请勿关闭此窗口！                  ║');
+    console.log('  ║                                          ║');
+    console.log('  ╚══════════════════════════════════════════╝');
     console.log('');
 
     // 自动打开浏览器
