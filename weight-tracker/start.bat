@@ -8,8 +8,7 @@ cd /d "%~dp0"
 
 echo.
 echo  ==========================================
-echo      ~(‾▿‾)~  昕露的减重计划  ~(‾▿‾)~
-echo           正在启动，请稍候...
+echo      昕露的减重计划 - 正在启动...
 echo  ==========================================
 echo.
 
@@ -23,26 +22,19 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-for /f "tokens=*" %%v in ('node -v') do set NODE_VER=%%v
-echo  [OK] Node.js 已就绪 (%NODE_VER%)
+echo  [OK] Node.js 已就绪
 
 :: 检查并释放端口 3000
 echo  [...] 检查端口 3000...
-set FOUND_PID=
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do (
-    set FOUND_PID=%%a
+    echo  [...] 正在释放端口 PID: %%a
+    taskkill /F /PID %%a >nul 2>nul
 )
-if defined FOUND_PID (
-    echo  [...] 正在释放端口 (PID: %FOUND_PID%^)...
-    taskkill /F /PID %FOUND_PID% >nul 2>nul
-    timeout /t 1 /nobreak >nul
-    echo  [OK] 端口已释放
-) else (
-    echo  [OK] 端口 3000 空闲
-)
+timeout /t 1 /nobreak >nul
 
+echo  [OK] 端口已就绪
 echo.
-echo  (ง •̀_•́)ง  正在启动服务器...
+echo  正在启动服务器...
 echo  浏览器将自动打开，请勿关闭此窗口
 echo  ------------------------------------------
 echo.
