@@ -667,6 +667,11 @@
             <div class="card">
                 <div class="card-title"><span class="icon" style="background:rgba(59,130,246,0.15);">👤</span>个人信息</div>
                 <div class="input-group"><label class="input-label">昵称</label><input class="input" id="settings-name" value="昕露"></div>
+                <div class="input-group"><label class="input-label">性别</label>
+                    <select class="input" id="settings-gender">
+                        <option value="male">男</option>
+                        <option value="female">女</option>
+                    </select></div>
                 <div class="input-group"><label class="input-label">身高 (cm)</label><input class="input" type="number" id="settings-height" value="175"></div>
                 <div class="input-group"><label class="input-label">起始体重 (kg)</label><input class="input" type="number" step="0.1" id="settings-start-weight" value="75.8"></div>
                 <div class="input-group"><label class="input-label">目标体重 (kg)</label><input class="input" type="number" step="0.1" id="settings-target-weight" value="65"></div>
@@ -1005,7 +1010,7 @@ function extractJSON(text,pattern,fallback){
 }
 
 var DEFAULT_SETTINGS = {
-    name:'昕露', height:175, startWeight:75.8, targetWeight:65,
+    name:'昕露', gender:'male', height:175, startWeight:75.8, targetWeight:65,
     targetDate:'2026-07-31', calorieTarget:1800, bmr:1653,
     aiProvider:'mimo', aiModel:'mimo-v2.5'
 };
@@ -1749,7 +1754,7 @@ async function streamAIResponse(){
     var lw=getLatestWeight();
     var currentPlan=getCurrentPlanSummary();
     var context='你是一个专业的运动计划顾问，名叫MIMO。'+
-        '用户信息：身高'+s.height+'cm，体重'+(lw?lw.weight:'未知')+'kg，'+
+        '用户信息：'+(s.gender==='male'?'男':'女')+'，身高'+s.height+'cm，体重'+(lw?lw.weight:'未知')+'kg，'+
         '目标'+s.targetWeight+'kg。\n'+
         '当前运动计划：\n'+currentPlan+'\n\n'+
         '每日晨间训练（固定，用户可调整内容但框架不变）：'+
@@ -2010,6 +2015,7 @@ async function generateAIReport(type){
     var todayNut=getTodayNutrients(today);
 
     var dataSummary='用户: '+s.name+'\n'+
+        '性别: '+(s.gender==='male'?'男':'女')+'\n'+
         '身高: '+s.height+'cm, 当前体重: '+(lw?lw.weight+'kg':'未知')+', 目标体重: '+s.targetWeight+'kg\n'+
         '体脂率: '+(lw?lw.bodyfat+'%':'未知')+', BMI: '+(lw?lw.bmi:'未知')+'\n'+
         '今日摄入: '+todayCal+' kcal (目标: '+s.calorieTarget+' kcal)\n'+
@@ -2241,6 +2247,7 @@ function renderSettings() {
     syncBMR(); // 从最新体重同步BMR
     var s=appData.settings;
     document.getElementById('settings-name').value=s.name;
+    document.getElementById('settings-gender').value=s.gender||'male';
     document.getElementById('settings-height').value=s.height;
     document.getElementById('settings-start-weight').value=s.startWeight;
     document.getElementById('settings-target-weight').value=s.targetWeight;
@@ -2275,6 +2282,7 @@ function showQRCode(){
 }
 function saveSettings() {
     appData.settings.name=document.getElementById('settings-name').value;
+    appData.settings.gender=document.getElementById('settings-gender').value;
     appData.settings.height=parseFloat(document.getElementById('settings-height').value);
     appData.settings.startWeight=parseFloat(document.getElementById('settings-start-weight').value);
     appData.settings.targetWeight=parseFloat(document.getElementById('settings-target-weight').value);
@@ -2285,14 +2293,17 @@ function saveSettings() {
     appData.settings.aiModel='mimo-v2.5';
     saveData();
 }
-// 自动计算基础代谢率（Mifflin-St Jeor 公式，男性）
+// 自动计算基础代谢率（Mifflin-St Jeor 公式）
 // 从最新体重记录同步BMR到设置
 function syncBMR(){
     var lw=getLatestWeight();
     if(!lw||!lw.weight) return;
     var height=appData.settings.height;
     var age=17;
-    var bmr=Math.round(10*lw.weight + 6.25*height - 5*age + 5); // Mifflin-St Jeor 男性
+    var isMale=(appData.settings.gender||'male')==='male';
+    // 男性：10*体重 + 6.25*身高 - 5*年龄 + 5
+    // 女性：10*体重 + 6.25*身高 - 5*年龄 - 161
+    var bmr=Math.round(10*lw.weight + 6.25*height - 5*age + (isMale?5:-161));
     appData.settings.bmr=bmr;
 }
 
