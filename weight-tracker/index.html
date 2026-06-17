@@ -702,6 +702,7 @@
                         <option value="male">男</option>
                         <option value="female">女</option>
                     </select></div>
+                <div class="input-group"><label class="input-label">年龄 (岁)</label><input class="input" type="number" id="settings-age" value="17"></div>
                 <div class="input-group"><label class="input-label">身高 (cm)</label><input class="input" type="number" id="settings-height" value="175"></div>
                 <div class="input-group"><label class="input-label">起始体重 (kg)</label><input class="input" type="number" step="0.1" id="settings-start-weight" value="75.8"></div>
                 <div class="input-group"><label class="input-label">目标体重 (kg)</label><input class="input" type="number" step="0.1" id="settings-target-weight" value="65"></div>
@@ -1071,7 +1072,7 @@ function extractJSON(text,pattern,fallback){
 }
 
 var DEFAULT_SETTINGS = {
-    name:'昕露', gender:'male', height:175, startWeight:75.8, targetWeight:65,
+    name:'昕露', gender:'male', age:17, height:175, startWeight:75.8, targetWeight:65,
     startDate:'2026-06-16', targetDate:'2026-07-31', calorieTarget:1800, bmr:1653,
     aiProvider:'mimo', aiModel:'mimo-v2.5'
 };
@@ -2399,7 +2400,7 @@ async function clearMaxCoach(){
 function buildBasicInfo(){
     var s=appData.settings;
     return '【基础信息】\n'+
-        '昵称: '+s.name+' | 性别: '+(s.gender==='male'?'男':'女')+' | 年龄: 17岁 | 身高: '+s.height+'cm\n'+
+        '昵称: '+s.name+' | 性别: '+(s.gender==='male'?'男':'女')+' | 年龄: '+(s.age||17)+'岁 | 身高: '+s.height+'cm\n'+
         '起始体重: '+s.startWeight+'kg | 目标体重: '+s.targetWeight+'kg\n'+
         '起始日期: '+s.startDate+' | 目标日期: '+s.targetDate+'\n'+
         '热量目标: '+s.calorieTarget+'kcal | BMR: '+(s.bmr||'--')+'kcal\n';
@@ -2846,6 +2847,7 @@ function renderSettings() {
     var s=appData.settings;
     document.getElementById('settings-name').value=s.name;
     document.getElementById('settings-gender').value=s.gender||'male';
+    document.getElementById('settings-age').value=s.age||17;
     document.getElementById('settings-height').value=s.height;
     document.getElementById('settings-start-weight').value=s.startWeight;
     document.getElementById('settings-target-weight').value=s.targetWeight;
@@ -2919,6 +2921,7 @@ function saveSettings() {
     }
     appData.settings.name=document.getElementById('settings-name').value;
     appData.settings.gender=document.getElementById('settings-gender').value;
+    appData.settings.age=parseInt(document.getElementById('settings-age').value)||17;
     appData.settings.height=parseFloat(document.getElementById('settings-height').value);
     appData.settings.startWeight=parseFloat(document.getElementById('settings-start-weight').value);
     appData.settings.targetWeight=parseFloat(document.getElementById('settings-target-weight').value);
@@ -2939,7 +2942,7 @@ function syncBMR(){
     var lw=getLatestWeight();
     if(!lw||!lw.weight) return;
     var height=appData.settings.height;
-    var age=17;
+    var age=appData.settings.age||17;
     var isMale=(appData.settings.gender||'male')==='male';
     // 男性：10*体重 + 6.25*身高 - 5*年龄 + 5
     // 女性：10*体重 + 6.25*身高 - 5*年龄 - 161
