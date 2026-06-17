@@ -2215,8 +2215,9 @@ function openMaxCoach(){
         _maxHistory.push({role:'system',content:MAX_SYS_PROMPT+'\n\n'+allData});
         _maxHistory.push({role:'user',content:'用户打开了 Max 健身指导。请先简要总结用户当前状态（2-3句话），然后问用户想聊什么。不要长篇大论复述数据，用户自己能看到。'});
 
-        addMaxMessage('ai','你好！我是 Max，你的 AI 健身教练 💪\n\n我已读取了你的全部历史数据，正在分析中...');
-        _streamMaxReply();
+        // 先显示欢迎占位，AI 回复后替换
+        var welcomeDiv=addMaxMessage('ai','你好！正在分析你的数据...');
+        _streamMaxReply(welcomeDiv);
     }
 }
 
@@ -2275,9 +2276,9 @@ async function sendMaxMessage(){
     await _streamMaxReply();
 }
 
-async function _streamMaxReply(){
+async function _streamMaxReply(existingDiv){
     _maxStreaming=true;
-    var typingDiv=addMaxTyping();
+    var typingDiv=existingDiv||addMaxTyping();
     try{
         var messages=[];
         _maxHistory.forEach(function(h){messages.push(h);});
