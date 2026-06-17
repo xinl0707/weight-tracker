@@ -354,7 +354,7 @@ var server = http.createServer(function(req, res) {
         return;
     }
 
-    // 图片识别
+    // 图片识别（带重试，最多3次）
     if (pathname === '/api/recognize' && req.method === 'POST') {
         readBody(req).then(function(body) {
             if (!body.image) {
@@ -369,15 +369,28 @@ var server = http.createServer(function(req, res) {
                     { type: 'image_url', image_url: { url: body.image } }
                 ]
             }];
-            console.log('[Recognize] Image recognition request...');
-            return callMiMO(messages);
+            var maxRetries = 3;
+            function tryRequest(attempt) {
+                console.log('[Recognize] Image recognition request... (attempt ' + attempt + '/' + maxRetries + ')');
+                return callMiMO(messages).catch(function(err) {
+                    console.error('[Recognize] Attempt ' + attempt + ' failed:', err.message);
+                    if (attempt < maxRetries) {
+                        var delay = attempt * 1000;
+                        return new Promise(function(r) { setTimeout(r, delay); }).then(function() {
+                            return tryRequest(attempt + 1);
+                        });
+                    }
+                    throw err;
+                });
+            }
+            return tryRequest(1);
         }).then(function(result) {
             if (result) {
                 console.log('[Recognize] Success');
                 sendJSON(res, 200, result);
             }
         }).catch(function(err) {
-            console.error('[Recognize] Failed:', err.message);
+            console.error('[Recognize] Failed after all retries:', err.message);
             sendJSON(res, 500, { error: err.message });
         });
         return;

@@ -2007,40 +2007,83 @@ async function generateAIReport(type){
     var todayDiets=appData.diets.filter(function(d){return d.date===today;});
     var todayCal=todayDiets.reduce(function(s,d){return s+(parseInt(d.calories)||0);},0);
     var todayExercises=appData.exercises.filter(function(e){return e.date===today;});
+    var todayNut=getTodayNutrients(today);
 
     var dataSummary='用户: '+s.name+'\n'+
         '身高: '+s.height+'cm, 当前体重: '+(lw?lw.weight+'kg':'未知')+', 目标体重: '+s.targetWeight+'kg\n'+
         '体脂率: '+(lw?lw.bodyfat+'%':'未知')+', BMI: '+(lw?lw.bmi:'未知')+'\n'+
         '今日摄入: '+todayCal+' kcal (目标: '+s.calorieTarget+' kcal)\n'+
+        '今日营养素: 蛋白质'+Math.round(todayNut.protein)+'g, 碳水'+Math.round(todayNut.carbs)+'g, 脂肪'+Math.round(todayNut.fat)+'g\n'+
         '今日运动: '+todayExercises.length+' 项\n';
 
     var prompt='';
     if(type==='daily'){
         prompt='你是专业的健身教练和营养师。请根据以下数据生成今日分析报告，包括：1.数据总结 2.优缺点分析 3.明天的建议。用中文回答，语气亲切专业。\n\n'+dataSummary;
     }else if(type==='weekly'){
-        // 收集本周数据
         var weekAgo=new Date();weekAgo.setDate(weekAgo.getDate()-7);
         var weekStr=weekAgo.toISOString().slice(0,10);
         var ww=appData.weights.filter(function(w){return w.date>=weekStr;});
         var wd=appData.diets.filter(function(d){return d.date>=weekStr;});
         var we=appData.exercises.filter(function(e){return e.date>=weekStr;});
         var weekCal=wd.reduce(function(s,d){return s+(parseInt(d.calories)||0);},0);
+        var weekPro=wd.reduce(function(s,d){return s+(parseFloat(d.protein)||0);},0);
+        var weekCarb=wd.reduce(function(s,d){return s+(parseFloat(d.carbs)||0);},0);
+        var weekFat=wd.reduce(function(s,d){return s+(parseFloat(d.fat)||0);},0);
         var weekChange=ww.length>=2?(ww[ww.length-1].weight-ww[0].weight).toFixed(1):'未知';
-        prompt='你是专业的健身教练。请根据以下本周数据生成周度分析报告，包括：1.本周体重变化 2.饮食运动总结 3.下周调整建议。用中文回答。\n\n'+dataSummary+'本周体重变化: '+weekChange+'kg\n本周总运动次数: '+we.length+'\n本周总摄入: '+weekCal+' kcal';
+        prompt='你是专业的健身教练。请根据以下本周数据生成周度分析报告，包括：1.本周体重变化 2.饮食运动总结 3.下周调整建议。用中文回答。\n\n'+dataSummary+'本周体重变化: '+weekChange+'kg\n本周总运动次数: '+we.length+'\n本周总摄入: '+weekCal+' kcal\n本周营养素总摄入: 蛋白质'+Math.round(weekPro)+'g, 碳水'+Math.round(weekCarb)+'g, 脂肪'+Math.round(weekFat)+'g';
     }else{
         prompt='你是专业的健身教练和营养师。请根据以下数据给出改进建议，包括：1.饮食优化建议 2.运动调整建议 3.生活习惯建议 4.需要注意的事项。用中文回答，语气亲切。\n\n'+dataSummary;
     }
 
+    // 使用流式传输
     try{
-        var resp=await fetch(API_BASE_URL+'/api/analyze',{
+        var sysPrompt='你是专业的健身教练和营养师，名叫"MIMO"。请用中文回答，语气亲切专业。使用 Markdown 格式输出。';
+        var resp=await fetch(API_BASE_URL+'/api/chat/stream',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({prompt:prompt})
+            body:JSON.stringify({messages:[{role:'system',content:sysPrompt},{role:'user',content:prompt}]})
         });
         if(!resp.ok)throw new Error('API请求失败 ('+resp.status+')');
-        var result=await resp.json();
-        var content=result.content||result.error||'未获取到分析结果';
-        container.innerHTML='<div style="background:rgba(139,92,246,0.05);border-radius:12px;padding:20px;line-height:1.8;font-size:14px;color:var(--text-secondary);">'+renderMarkdown(content)+'</div>'+
+        var fullText='';
+        var renderPending=false;
+        var reader=resp.body.getReader();
+        var decoder=new TextDecoder();
+        var buffer='';
+        container.innerHTML='<div id="ai-stream-'+type+'" style="background:rgba(139,92,246,0.05);border-radius:12px;padding:20px;line-height:1.8;font-size:14px;color:var(--text-secondary);min-height:60px;"></div>';
+        var streamDiv=document.getElementById('ai-stream-'+type);
+        while(true){
+            var chunk=await reader.read();
+            if(chunk.done)break;
+            buffer+=decoder.decode(chunk.value,{stream:true});
+            var lines=buffer.split('\n');
+            buffer=lines.pop();
+            for(var i=0;i<lines.length;i++){
+                var line=lines[i].trim();
+                if(line.indexOf('data: ')===0){
+                    var data=line.slice(6);
+                    if(data==='[DONE]')continue;
+                    try{
+                        var json=JSON.parse(data);
+                        if(json.content){
+                            fullText+=json.content;
+                            if(!renderPending){
+                                renderPending=true;
+                                requestAnimationFrame(function(){
+                                    streamDiv.innerHTML=renderMarkdown(fullText);
+                                    streamDiv.scrollTop=streamDiv.scrollHeight;
+                                    renderPending=false;
+                                });
+                            }
+                        }
+                        if(json.error)throw new Error(json.error);
+                    }catch(e){
+                        if(e.message&&!e.message.includes('JSON'))throw e;
+                    }
+                }
+            }
+        }
+        streamDiv.innerHTML=renderMarkdown(fullText);
+        container.innerHTML=streamDiv.outerHTML+
             '<div style="margin-top:12px;text-align:right;"><button class="btn btn-secondary btn-sm" onclick="generateAIReport(\''+type+'\')">🔄 重新分析</button></div>';
     }catch(err){
         container.innerHTML='<div style="text-align:center;padding:30px;">'+
@@ -2692,6 +2735,23 @@ function quickRecordExercise(type,desc,duration){
     renderExercisePage();
 }
 
+/* ====== 图片压缩工具 ====== */
+function compressImage(base64, maxWidth, quality) {
+    return new Promise(function(resolve) {
+        var img = new Image();
+        img.onload = function() {
+            var canvas = document.createElement('canvas');
+            var w = img.width, h = img.height;
+            if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = function() { resolve(base64); }; // 压缩失败则用原图
+        img.src = base64;
+    });
+}
+
 /* ====== AI 识图（体重） ====== */
 var recognizedData=null;
 function handleImageUpload(ev){
@@ -2701,7 +2761,9 @@ function handleImageUpload(ev){
         document.getElementById('upload-preview-img').src=e.target.result;
         document.getElementById('upload-zone').style.display='none';
         document.getElementById('upload-preview').style.display='block';
-        recognizeWeightImage(e.target.result);
+        compressImage(e.target.result,1280,0.85).then(function(compressed){
+            recognizeWeightImage(compressed);
+        });
     };
     reader.readAsDataURL(file);
 }
@@ -2803,7 +2865,9 @@ function handleDietImageUpload(ev){
         document.getElementById('diet-upload-preview-img').src=e.target.result;
         document.getElementById('diet-upload-zone').style.display='none';
         document.getElementById('diet-upload-preview').style.display='block';
-        recognizeDietImage(e.target.result);
+        compressImage(e.target.result,1024,0.7).then(function(compressed){
+            recognizeDietImage(compressed);
+        });
     };
     reader.readAsDataURL(file);
 }
