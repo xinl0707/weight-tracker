@@ -3587,6 +3587,11 @@ function saveDietRecord(){
     if(savedCount===0){myAlert('请至少填写一种食物','提示','📝');return;}
     addLog('save','保存饮食记录','日期:'+date+',餐次:'+mealType+',数量:'+savedCount+'条');
     saveData(); closeModal('modal-record-diet');
+    // 清空待保存数据，防止重复保存
+    _dietCalcData=[];
+    var foodList=document.getElementById('food-items-list');
+    if(foodList) foodList.innerHTML='';
+    document.getElementById('diet-paste-results').innerHTML='';
     celebrate();
     myAlert('已保存 '+savedCount+' 种食物','保存成功','✅');
     renderDietPage();
