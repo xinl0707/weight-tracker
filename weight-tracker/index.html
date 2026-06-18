@@ -3467,7 +3467,12 @@ async function parseDietPaste(){
     try{
         var resp=await fetch(API_BASE_URL+'/api/analyze',{
             method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({prompt:'请分析以下饮食记录，识别每种食物及其份量，估算营养成分，并根据描述判断每种食物属于哪餐。返回JSON数组，每个元素：{"name":"食物名","mealType":"breakfast或lunch或dinner或snack","amount":"份量","calories":kcal,"protein":g,"carbs":g,"fat":g}。mealType取值：breakfast(早餐)、lunch(午餐)、dinner(晚餐)、snack(加餐/下午茶/夜宵)。如果无法判断餐次，默认为snack。amount格式要求：用阿拉伯数字+量词（如"2只"、"1碗"、"3块"），不要用中文数字（如"两只"、"一碗"）。同一种食物只返回一条，份量写总数（如吃了2只虾就写"2只"，不要拆成两条）。只返回JSON数组。\n\n'+text})
+            body:JSON.stringify({prompt:'请分析以下饮食记录，识别每种食物及其份量，估算营养成分。返回JSON数组，每个元素：{"name":"食物名","mealType":"餐次","amount":"份量","calories":kcal,"protein":g,"carbs":g,"fat":g}。\n'+
+                '【严格规则】\n'+
+                '1. mealType：只有用户明确说了"早餐/午餐/晚餐/加餐"才填写，否则必须返回null。绝对不要自己猜测餐次！\n'+
+                '2. amount：忠实记录用户的描述，不要脑补具体数字。用户说"几片"就写"几片"，说"一些"就写"一些"，说"2只"才写"2只"。\n'+
+                '3. 同一种食物只返回一条，不要拆成多条。\n'+
+                '4. 只返回JSON数组，不要其他文字。\n\n'+text})
         });
         if(!resp.ok){
             var errBody=await resp.json().catch(function(){return {};});
