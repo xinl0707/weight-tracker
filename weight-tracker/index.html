@@ -1074,7 +1074,9 @@ function extractJSON(text,pattern,fallback){
 var DEFAULT_SETTINGS = {
     name:'昕露', gender:'male', age:17, height:175, startWeight:75.8, targetWeight:65,
     startDate:'2026-06-16', targetDate:'2026-07-31', calorieTarget:1800, bmr:1653,
-    aiProvider:'mimo', aiModel:'mimo-v2.5'
+    aiProvider:'mimo', aiModel:'mimo-v2.5',
+    weightRecognizeHistory: [],
+    dietRecognizeHistory: []
 };
 var DEFAULT_DATA = {
     settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
@@ -1085,7 +1087,8 @@ var DEFAULT_DATA = {
         bmr:null, bodyAge:null, note:'初始记录' }],
     diets: [], exercises: [], checklist: {},
     aiReports: { daily:{content:'',date:''}, weekly:{content:'',date:''}, advice:{content:'',date:''} },
-    maxCoachHistory: []
+    maxCoachHistory: [],
+    appLogs: []
 };
 
 function loadData() {
@@ -1224,8 +1227,25 @@ function myConfirm(msg,title,icon){
 
 /* ====== AI 加载提示 ====== */
 var _aiLoadingEl=null;
-function showAILoading(msg){
+var _aiLoadingTimer=null;
+var _aiLoadingStartTime=0;
+var _aiLoadingEstimate=0;
+function getAvgRecognizeTime(type){
+    var key=type==='weight'?'weightRecognizeHistory':'dietRecognizeHistory';
+    var h=appData.settings[key]||[];
+    if(h.length===0)return 0;
+    var sum=h.reduce(function(s,r){return s+r.time;},0);
+    return Math.round(sum/h.length/1000);
+}
+function showAILoading(msg,showTimer,type){
     hideAILoading();
+    _aiLoadingStartTime=Date.now();
+    _aiLoadingEstimate=getAvgRecognizeTime(type);
+    var timerHtml='';
+    if(showTimer){
+        var estText=_aiLoadingEstimate>0?' · 预计 '+_aiLoadingEstimate+'s':' · 首次识别可能较慢';
+        timerHtml='<div id="ai-timer" style="color:var(--text-muted);font-size:12px;margin-top:10px;">已用时 0s'+estText+'</div>';
+    }
     var div=document.createElement('div');
     div.id='ai-loading-overlay';
     div.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);z-index:998;display:flex;align-items:center;justify-content:center;';
@@ -1236,12 +1256,84 @@ function showAILoading(msg){
         '<div class="ai-dot" style="width:8px;height:8px;border-radius:50%;background:var(--accent-blue);animation:aiDot 1.4s infinite ease-in-out;"></div>'+
         '<div class="ai-dot" style="width:8px;height:8px;border-radius:50%;background:var(--accent-purple);animation:aiDot 1.4s 0.2s infinite ease-in-out;"></div>'+
         '<div class="ai-dot" style="width:8px;height:8px;border-radius:50%;background:var(--accent-green);animation:aiDot 1.4s 0.4s infinite ease-in-out;"></div>'+
-        '</div></div>';
+        '</div>'+timerHtml+'</div>';
     document.body.appendChild(div);
     _aiLoadingEl=div;
+    if(showTimer){
+        _aiLoadingTimer=setInterval(function(){
+            var elapsed=Math.round((Date.now()-_aiLoadingStartTime)/1000);
+            var el=document.getElementById('ai-timer');
+            if(el){
+                var estText=_aiLoadingEstimate>0?' · 预计 '+_aiLoadingEstimate+'s':' · 首次识别可能较慢';
+                el.textContent='已用时 '+elapsed+'s'+estText;
+            }
+        },1000);
+    }
 }
 function hideAILoading(){
+    if(_aiLoadingTimer){clearInterval(_aiLoadingTimer);_aiLoadingTimer=null;}
     if(_aiLoadingEl){_aiLoadingEl.remove();_aiLoadingEl=null;}
+}
+function recordRecognizeTime(ms,type){
+    var key=type==='weight'?'weightRecognizeHistory':'dietRecognizeHistory';
+    var h=appData.settings[key]||[];
+    h.push({time:ms,date:getTodayStr()});
+    if(h.length>10)h=h.slice(-10);
+    appData.settings[key]=h;
+    saveData();
+}
+/* ====== 日志系统 ====== */
+function addLog(type,message,detail){
+    var logs=appData.appLogs||[];
+    logs.push({time:Date.now(),date:getTodayStr(),type:type,msg:message,detail:detail||null});
+    if(logs.length>200)logs=logs.slice(-200);
+    appData.appLogs=logs;
+    saveData();
+}
+function getRecentLogs(count){
+    var logs=appData.appLogs||[];
+    return logs.slice(-(count||50));
+}
+/* 流式识别：POST /api/recognize/stream，返回 Promise<result> */
+function _streamRecognize(body){
+    return new Promise(function(resolve,reject){
+        fetch(API_BASE_URL+'/api/recognize/stream',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(body)
+        }).then(function(resp){
+            if(!resp.ok){reject(new Error('API 请求失败'));return;}
+            var reader=resp.body.getReader();
+            var decoder=new TextDecoder();
+            var sseBuffer='',result=null;
+            function read(){
+                reader.read().then(function(chunk){
+                    if(chunk.done){
+                        if(result)resolve(result);
+                        else reject(new Error('未收到识别结果'));
+                        return;
+                    }
+                    sseBuffer+=decoder.decode(chunk.value,{stream:true});
+                    var parts=sseBuffer.split('\n\n');
+                    sseBuffer=parts.pop();
+                    parts.forEach(function(part){
+                        var evtType=null,evtData=null;
+                        part.split('\n').forEach(function(line){
+                            line=line.trim();
+                            if(line.indexOf('event: ')===0)evtType=line.slice(7);
+                            if(line.indexOf('data: ')===0)evtData=line.slice(6);
+                        });
+                        if(evtType==='result'&&evtData){
+                            try{result=JSON.parse(evtData);}catch(e){}
+                        }else if(evtType==='error'&&evtData){
+                            try{var err=JSON.parse(evtData);addLog('error','SSE识别错误',err.message);reject(new Error(err.message||'识别失败'));}catch(e){addLog('error','SSE识别错误','解析失败');reject(new Error('识别失败'));}
+                        }
+                    });
+                    read();
+                }).catch(reject);
+            }
+            read();
+        }).catch(reject);
+    });
 }
 
 /* ====== 庆祝礼花 ====== */
@@ -3234,11 +3326,17 @@ async function parseDietPaste(){
     var btn=document.getElementById('diet-parse-btn');
     btn.disabled=true; btn.textContent='🤖 AI 识别中...';
     document.getElementById('diet-paste-results').innerHTML='<div style="text-align:center;padding:16px;color:var(--text-secondary);">AI 正在识别...</div>';
+    addLog('analyze','粘贴识别开始','文本长度:'+text.length+'字');
+    var startTime=Date.now();
     try{
         var resp=await fetch(API_BASE_URL+'/api/analyze',{
             method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({prompt:'请分析以下饮食记录，识别每种食物及其份量，估算营养成分，并根据描述判断每种食物属于哪餐。返回JSON数组，每个元素：{"name":"食物名","mealType":"breakfast或lunch或dinner或snack","amount":"份量","calories":kcal,"protein":g,"carbs":g,"fat":g}。mealType取值：breakfast(早餐)、lunch(午餐)、dinner(晚餐)、snack(加餐/下午茶/夜宵)。如果无法判断餐次，默认为snack。只返回JSON数组。\n\n'+text})
         });
+        if(!resp.ok){
+            var errBody=await resp.json().catch(function(){return {};});
+            throw new Error(errBody.error||'HTTP '+resp.status);
+        }
         var result=await resp.json();
         var content=result.content||'[]';
         var match=content.match(/\[[\s\S]*?\]/);
@@ -3246,6 +3344,7 @@ async function parseDietPaste(){
         // 兼容：如果 AI 没返回 mealType，默认 snack
         foods.forEach(function(f){if(!f.mealType)f.mealType='snack';});
         _dietCalcData=foods;
+        addLog('analyze','粘贴识别成功','耗时:'+Math.round((Date.now()-startTime)/1000)+'s,食物数:'+foods.length);
         // 按餐次分组展示
         var mn={breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍪 加餐'};
         var groups={};
@@ -3272,6 +3371,7 @@ async function parseDietPaste(){
         document.getElementById('diet-paste-results').innerHTML=html||'<p style="color:var(--text-muted);">未识别到食物</p>';
         updateFoodTotal();
     }catch(e){
+        addLog('error','粘贴识别失败','耗时:'+Math.round((Date.now()-startTime)/1000)+'s,错误:'+e.message);
         document.getElementById('diet-paste-results').innerHTML='<p style="color:var(--accent-red);">识别失败: '+e.message+'</p>';
     }
     btn.disabled=false; btn.textContent='🤖 AI 识别并计算营养';
@@ -3415,7 +3515,7 @@ function handleImageUpload(ev){
         document.getElementById('upload-preview-img').src=e.target.result;
         document.getElementById('upload-zone').style.display='none';
         document.getElementById('upload-preview').style.display='block';
-        compressImage(e.target.result,1280,0.85).then(function(compressed){
+        compressImage(e.target.result,800,0.6).then(function(compressed){
             recognizeWeightImage(compressed);
         });
     };
@@ -3424,12 +3524,13 @@ function handleImageUpload(ev){
 async function recognizeWeightImage(b64){
     document.getElementById('upload-result').style.display='none';
     document.getElementById('upload-fallback').style.display='none';
-    showAILoading('AI 正在识别体重数据...');
+    showAILoading('AI 正在识别体重数据...',true,'weight');
+    addLog('recognize','体重图片识别开始','图片大小:'+Math.round(b64.length/1024)+'KB');
+    var startTime=Date.now();
     try{
-        var resp=await fetch(API_BASE_URL+'/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({image:b64,prompt:'请仔细识别这张小米运动健康APP的体重/身体成分报告截图。请提取截图中显示的所有数据和日期。以JSON格式返回，字段如下：{"date":"截图中的日期(YYYY-MM-DD格式，如果看不到日期就返回null)","weight":体重kg,"bmi":BMI值,"bodyfat":体脂率%,"leanMass":去脂体重kg,"fatMass":脂肪量kg,"waterVol":体水分量L,"waterPct":身体水分%,"boneMineral":骨盐量kg,"proteinMass":蛋白质量kg,"muscleMass":肌肉量kg,"musclePct":肌肉率%,"proteinPct":蛋白质率%,"bonePct":骨盐率%,"skeletalMuscle":骨骼肌量kg,"bmr":基础代谢率kcal,"bodyAge":身体年龄}。如果某个字段在截图中找不到就返回null。只返回JSON，不要其他文字。'})});
-        if(!resp.ok)throw new Error('API 请求失败');
-        var result=await resp.json();
+        var result=await _streamRecognize({image:b64,prompt:'请仔细识别这张小米运动健康APP的体重/身体成分报告截图。请提取截图中显示的所有数据和日期。以JSON格式返回，字段如下：{"date":"截图中的日期(YYYY-MM-DD格式，如果看不到日期就返回null)","weight":体重kg,"bmi":BMI值,"bodyfat":体脂率%,"leanMass":去脂体重kg,"fatMass":脂肪量kg,"waterVol":体水分量L,"waterPct":身体水分%,"boneMineral":骨盐量kg,"proteinMass":蛋白质量kg,"muscleMass":肌肉量kg,"musclePct":肌肉率%,"proteinPct":蛋白质率%,"bonePct":骨盐率%,"skeletalMuscle":骨骼肌量kg,"bmr":基础代谢率kcal,"bodyAge":身体年龄}。如果某个字段在截图中找不到就返回null。只返回JSON，不要其他文字。'});
+        recordRecognizeTime(Date.now()-startTime,'weight');
+        addLog('recognize','体重识别成功','耗时:'+Math.round((Date.now()-startTime)/1000)+'s,体重:'+(result.weight||'--')+'kg');
         // 日期识别：优先用图中日期，否则用今天
         var recognizedDate = result.date || getTodayStr();
         recognizedData={date:recognizedDate,
@@ -3484,7 +3585,7 @@ async function recognizeWeightImage(b64){
         hideAILoading();
         document.getElementById('upload-result').style.display='block';
         document.getElementById('upload-fallback').style.display='none';
-    }catch(err){hideAILoading();showWeightFallback(err.message);}
+    }catch(err){addLog('error','体重识别失败',err.message);hideAILoading();showWeightFallback(err.message);}
 }
 function showWeightFallback(msg){
     document.getElementById('fallback-msg').textContent=msg||'请手动填写数据';
@@ -3519,7 +3620,7 @@ function handleDietImageUpload(ev){
         document.getElementById('diet-upload-preview-img').src=e.target.result;
         document.getElementById('diet-upload-zone').style.display='none';
         document.getElementById('diet-upload-preview').style.display='block';
-        compressImage(e.target.result,1024,0.7).then(function(compressed){
+        compressImage(e.target.result,640,0.5).then(function(compressed){
             recognizeDietImage(compressed);
         });
     };
@@ -3528,12 +3629,13 @@ function handleDietImageUpload(ev){
 async function recognizeDietImage(b64){
     document.getElementById('diet-upload-result').style.display='none';
     document.getElementById('diet-upload-fallback').style.display='none';
-    showAILoading('AI 正在识别食物...');
+    showAILoading('AI 正在识别食物...',true,'diet');
+    addLog('recognize','饮食图片识别开始','图片大小:'+Math.round(b64.length/1024)+'KB');
+    var startTime=Date.now();
     try{
-        var resp=await fetch(API_BASE_URL+'/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({image:b64,prompt:'请识别这张食物照片中的所有食物。如果有多道食物，请分别识别并估算每种的营养成分。返回JSON数组，每个元素：{"name":"食物名","calories":热量kcal,"protein":蛋白质g,"carbs":碳水g,"fat":脂肪g}。只返回JSON数组，不要其他文字。'})});
-        if(!resp.ok)throw new Error('API 请求失败');
-        var result=await resp.json();
+        var result=await _streamRecognize({image:b64,prompt:'请识别这张食物照片中的所有食物。如果有多道食物，请分别识别并估算每种的营养成分。返回JSON数组，每个元素：{"name":"食物名","calories":热量kcal,"protein":蛋白质g,"carbs":碳水g,"fat":脂肪g}。只返回JSON数组，不要其他文字。'});
+        recordRecognizeTime(Date.now()-startTime,'diet');
+        addLog('recognize','饮食图片识别成功','耗时:'+Math.round((Date.now()-startTime)/1000)+'s,食物数:'+(Array.isArray(result)?result.length:1));
         // 兼容处理：支持数组和单对象返回
         var foods=[];
         if(Array.isArray(result)){foods=result;}
@@ -3576,7 +3678,7 @@ async function recognizeDietImage(b64){
         hideAILoading();
         document.getElementById('diet-upload-result').style.display='block';
         document.getElementById('diet-upload-fallback').style.display='none';
-    }catch(err){hideAILoading();showDietFallback(err.message);}
+    }catch(err){addLog('error','饮食图片识别失败',err.message);hideAILoading();showDietFallback(err.message);}
 }
 function showDietFallback(msg){
     document.getElementById('diet-fallback-msg').textContent=msg||'请手动填写';

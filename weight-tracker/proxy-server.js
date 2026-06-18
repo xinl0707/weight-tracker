@@ -126,7 +126,8 @@ function serveStatic(req, res, filePath) {
 }
 
 // ============ 调用 MiMO API ============
-function callMiMO(messages) {
+function callMiMO(messages, timeout) {
+    var _timeout = timeout || 30000;
     return new Promise(function(resolve, reject) {
         var body = JSON.stringify({
             model: MIMO_MODEL,
@@ -178,7 +179,7 @@ function callMiMO(messages) {
         });
 
         req.on('error', function(e) { reject(new Error('网络请求失败: ' + e.message)); });
-        req.setTimeout(30000, function() { req.destroy(); reject(new Error('请求超时')); });
+        req.setTimeout(_timeout, function() { req.destroy(); reject(new Error('请求超时 ('+Math.round(_timeout/1000)+'s)')); });
         req.write(body);
         req.end();
     });
@@ -354,6 +355,122 @@ var server = http.createServer(function(req, res) {
         return;
     }
 
+    // 图片识别 - 流式版本（SSE，实时进度 + 结果）
+    if (pathname === '/api/recognize/stream' && req.method === 'POST') {
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*'
+        });
+        readBody(req).then(function(body) {
+            if (!body.image) {
+                res.write('event: error\ndata: ' + JSON.stringify({message:'缺少图片数据'}) + '\n\n');
+                res.write('event: done\ndata: {}\n\n');
+                res.end();
+                return;
+            }
+            var prompt = body.prompt || 'Please recognize this image and return JSON.';
+            var messages = [{
+                role: 'user',
+                content: [
+                    { type: 'text', text: prompt },
+                    { type: 'image_url', image_url: { url: body.image } }
+                ]
+            }];
+            // 进度计时器：每2秒发送一次已用时间
+            var startTime = Date.now();
+            var progressTimer = setInterval(function() {
+                var elapsed = Math.round((Date.now() - startTime) / 1000);
+                res.write('event: progress\ndata: ' + JSON.stringify({elapsed: elapsed}) + '\n\n');
+            }, 2000);
+            // 流式调用 MiMO API
+            var body2 = JSON.stringify({
+                model: MIMO_MODEL, messages: messages,
+                max_tokens: 2048, temperature: 0.7, stream: true
+            });
+            var parsed = new URL(MIMO_API_URL);
+            var options = {
+                hostname: parsed.hostname, port: 443, path: parsed.pathname,
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'api-key': MIMO_API_KEY, 'Content-Length': Buffer.byteLength(body2) }
+            };
+            var maxRetries = 3;
+            var attempt = 0;
+            function tryStream() {
+                attempt++;
+                console.log('  (...) 流式识别中... (第 ' + attempt + '/' + maxRetries + ' 次)');
+                var apiReq = https.request(options, function(apiRes) {
+                    var buffer = '', accumulated = '';
+                    apiRes.on('data', function(chunk) {
+                        buffer += chunk.toString();
+                        var lines = buffer.split('\n');
+                        buffer = lines.pop();
+                        lines.forEach(function(line) {
+                            line = line.trim();
+                            if (line.indexOf('data: ') === 0) {
+                                var data = line.slice(6);
+                                if (data === '[DONE]') return;
+                                try {
+                                    var json = JSON.parse(data);
+                                    var content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
+                                    if (content) accumulated += content;
+                                } catch(e) {}
+                            }
+                        });
+                    });
+                    apiRes.on('end', function() {
+                        clearInterval(progressTimer);
+                        // 尝试解析累积的 JSON
+                        var result;
+                        var jsonMatch = accumulated.match(/\{[\s\S]*\}/);
+                        if (jsonMatch) {
+                            try { result = JSON.parse(jsonMatch[0]); } catch(e) { result = {text: accumulated}; }
+                        } else {
+                            result = {text: accumulated};
+                        }
+                        var totalMs = Date.now() - startTime;
+                        console.log('  ^_^ 流式识别成功 (' + Math.round(totalMs/1000) + 's)');
+                        res.write('event: result\ndata: ' + JSON.stringify(result) + '\n\n');
+                        res.write('event: done\ndata: ' + JSON.stringify({elapsed: Math.round(totalMs/1000)}) + '\n\n');
+                        res.end();
+                    });
+                });
+                apiReq.on('error', function(e) {
+                    if (attempt < maxRetries) {
+                        console.error('  ;_; 第 ' + attempt + ' 次流式识别失败:', e.message);
+                        setTimeout(tryStream, attempt * 500);
+                    } else {
+                        clearInterval(progressTimer);
+                        res.write('event: error\ndata: ' + JSON.stringify({message: '识别失败: ' + e.message}) + '\n\n');
+                        res.write('event: done\ndata: {}\n\n');
+                        res.end();
+                    }
+                });
+                apiReq.setTimeout(20000, function() {
+                    apiReq.destroy();
+                    if (attempt < maxRetries) {
+                        console.error('  ;_; 第 ' + attempt + ' 次流式识别超时');
+                        setTimeout(tryStream, attempt * 500);
+                    } else {
+                        clearInterval(progressTimer);
+                        res.write('event: error\ndata: ' + JSON.stringify({message: '识别超时，请重试'}) + '\n\n');
+                        res.write('event: done\ndata: {}\n\n');
+                        res.end();
+                    }
+                });
+                apiReq.write(body2);
+                apiReq.end();
+            }
+            tryStream();
+        }).catch(function(err) {
+            res.write('event: error\ndata: ' + JSON.stringify({message: err.message}) + '\n\n');
+            res.write('event: done\ndata: {}\n\n');
+            res.end();
+        });
+        return;
+    }
+
     // 图片识别（带重试，最多3次）
     if (pathname === '/api/recognize' && req.method === 'POST') {
         readBody(req).then(function(body) {
@@ -372,10 +489,10 @@ var server = http.createServer(function(req, res) {
             var maxRetries = 3;
             function tryRequest(attempt) {
                 console.log('  (...) 图片识别中... (第 ' + attempt + '/' + maxRetries + ' 次)');
-                return callMiMO(messages).catch(function(err) {
+                return callMiMO(messages, 20000).catch(function(err) {
                     console.error('  ;_; 第 ' + attempt + ' 次识别失败:', err.message);
                     if (attempt < maxRetries) {
-                        var delay = attempt * 1000;
+                        var delay = attempt * 500;
                         return new Promise(function(r) { setTimeout(r, delay); }).then(function() {
                             return tryRequest(attempt + 1);
                         });
@@ -414,7 +531,7 @@ var server = http.createServer(function(req, res) {
                 return;
             }
             console.log('  @_@ AI 分析请求 (' + (body.messages ? '对话' : '单条') + ')...');
-            return callMiMO(messages);
+            return callMiMO(messages, 60000);
         }).then(function(result) {
             if (result) {
                 console.log('  ^_^ 分析完成');
