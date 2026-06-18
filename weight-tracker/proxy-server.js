@@ -126,14 +126,15 @@ function serveStatic(req, res, filePath) {
 }
 
 // ============ 调用 MiMO API ============
-function callMiMO(messages, timeout) {
+function callMiMO(messages, timeout, temperature) {
     var _timeout = timeout || 30000;
+    var _temp = (temperature !== undefined) ? temperature : 0.7;
     return new Promise(function(resolve, reject) {
         var body = JSON.stringify({
             model: MIMO_MODEL,
             messages: messages,
             max_tokens: 2048,
-            temperature: 0.7
+            temperature: _temp
         });
 
         var parsed = new URL(MIMO_API_URL);
@@ -532,9 +533,13 @@ var server = http.createServer(function(req, res) {
                 // 对话模式：直接使用传入的消息数组
                 messages = body.messages;
             } else if (body.prompt) {
-                // 单条模式
+                // 单条模式：如果 prompt 含 JSON 关键词，使用纯数据指令
+                var isJsonTask = body.prompt.indexOf('JSON') > -1;
+                var sysContent = isJsonTask
+                    ? '你是数据分析助手。只输出用户要求的JSON格式数据，不要输出任何解释、分析、思考过程或额外文字。直接以JSON开头。'
+                    : '你是专业的健身教练和营养师，名叫"MIMO"。请用中文回答，语气亲切专业。使用 Markdown 格式输出，包括标题(##/###)、粗体(**)、列表(-/1.)等，让内容层次分明、易于阅读。不要在行与行之间添加多余的空行或空格。';
                 messages = [
-                    { role: 'system', content: '你是专业的健身教练和营养师，名叫"MIMO"。请用中文回答，语气亲切专业。使用 Markdown 格式输出，包括标题(##/###)、粗体(**)、列表(-/1.)等，让内容层次分明、易于阅读。不要在行与行之间添加多余的空行或空格。' },
+                    { role: 'system', content: sysContent },
                     { role: 'user', content: body.prompt }
                 ];
             } else {
@@ -542,7 +547,9 @@ var server = http.createServer(function(req, res) {
                 return;
             }
             console.log('  @_@ AI 分析请求 (' + (body.messages ? '对话' : '单条') + ')...');
-            return callMiMO(messages, 60000);
+            // 如果 prompt 包含 JSON 关键词，降低温度提高稳定性
+            var useTemp = (body.prompt && body.prompt.indexOf('JSON') > -1) ? 0.1 : 0.7;
+            return callMiMO(messages, 60000, useTemp);
         }).then(function(result) {
             if (result) {
                 var content = result.text || JSON.stringify(result);
