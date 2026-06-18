@@ -126,16 +126,25 @@ function serveStatic(req, res, filePath) {
 }
 
 // ============ 调用 MiMO API ============
-function callMiMO(messages, timeout, temperature) {
+function callMiMO(messages, timeout, options) {
     var _timeout = timeout || 30000;
-    var _temp = (temperature !== undefined) ? temperature : 0.7;
+    var opts = options || {};
+    var _temp = (opts.temperature !== undefined) ? opts.temperature : 0.7;
+    var _thinking = opts.thinking; // 'enabled' | 'disabled' | undefined(默认)
     return new Promise(function(resolve, reject) {
-        var body = JSON.stringify({
+        var reqBody = {
             model: MIMO_MODEL,
             messages: messages,
-            max_tokens: 2048,
-            temperature: _temp
-        });
+            max_tokens: 2048
+        };
+        // 深度思考模式下不支持自定义 temperature，会被强制 1.0
+        if (!_thinking || _thinking === 'disabled') {
+            reqBody.temperature = _temp;
+        }
+        if (_thinking) {
+            reqBody.thinking = { type: _thinking };
+        }
+        var body = JSON.stringify(reqBody);
 
         var parsed = new URL(MIMO_API_URL);
         var options = {
@@ -197,14 +206,14 @@ function callMiMO(messages, timeout, temperature) {
     });
 }
 
-// 流式输出版本
+// 流式输出版本（Max教练/AI报告，支持深度思考）
 function callMiMOStream(messages, res) {
     var body = JSON.stringify({
         model: MIMO_MODEL,
         messages: messages,
-        max_tokens: 2048,
-        temperature: 0.7,
-        stream: true
+        max_tokens: 4096,
+        stream: true,
+        thinking: { type: 'enabled' }
     });
 
     var parsed = new URL(MIMO_API_URL);
@@ -399,7 +408,8 @@ var server = http.createServer(function(req, res) {
             // 流式调用 MiMO API
             var body2 = JSON.stringify({
                 model: MIMO_MODEL, messages: messages,
-                max_tokens: 2048, temperature: 0.7, stream: true
+                max_tokens: 2048, temperature: 0.1, stream: true,
+                thinking: { type: 'disabled' }
             });
             var parsed = new URL(MIMO_API_URL);
             var options = {
@@ -501,7 +511,7 @@ var server = http.createServer(function(req, res) {
             var maxRetries = 3;
             function tryRequest(attempt) {
                 console.log('  (...) 图片识别中... (第 ' + attempt + '/' + maxRetries + ' 次)');
-                return callMiMO(messages, 20000).catch(function(err) {
+                return callMiMO(messages, 20000, {temperature: 0.1, thinking: 'disabled'}).catch(function(err) {
                     console.error('  ;_; 第 ' + attempt + ' 次识别失败:', err.message);
                     if (attempt < maxRetries) {
                         var delay = attempt * 500;
@@ -547,9 +557,12 @@ var server = http.createServer(function(req, res) {
                 return;
             }
             console.log('  @_@ AI 分析请求 (' + (body.messages ? '对话' : '单条') + ')...');
-            // 如果 prompt 包含 JSON 关键词，降低温度提高稳定性
-            var useTemp = (body.prompt && body.prompt.indexOf('JSON') > -1) ? 0.1 : 0.7;
-            return callMiMO(messages, 60000, useTemp);
+            // JSON 任务：关闭深度思考 + 低温度；文本任务：保持默认
+            var isJsonTask = body.prompt && body.prompt.indexOf('JSON') > -1;
+            var aiOpts = isJsonTask
+                ? {temperature: 0.1, thinking: 'disabled'}
+                : {};
+            return callMiMO(messages, 60000, aiOpts);
         }).then(function(result) {
             if (result) {
                 var content = result.text || JSON.stringify(result);
