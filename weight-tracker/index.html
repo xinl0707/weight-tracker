@@ -1379,6 +1379,17 @@ function getTodayStr() {
 }
 // 四舍五入到1位小数（避免浮点精度问题如 80.60000000000001）
 function _r1(v){return Math.round((v||0)*10)/10;}
+// 统一量词格式：中文数字→阿拉伯数字，提取 数字+单位
+function _normalizeAmount(s){
+    if(!s)return '';
+    var cn={'一':'1','二':'2','两':'2','三':'3','四':'4','五':'5','六':'6','七':'7','八':'8','九':'9','十':'10','半':'0.5','几':'几'};
+    // 替换中文数字
+    var t=s.replace(/[一二两三四五六七八九十半]/g,function(m){return cn[m]||m;});
+    // 提取 数字+单位（如 "2只"、"1.5碗"、"几根"）
+    var m=t.match(/([\d.]+|几)\s*(.*)/);
+    if(m){return m[1]+(m[2]||'');}
+    return t.trim();
+}
 // 本地日期格式化（避免 toISOString 的 UTC 时区问题）
 function formatDateLocal(d){
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -3362,7 +3373,7 @@ async function calcAllFoodItems(){
     btn.disabled=true; btn.textContent='🤖 AI 计算中...';
     showAILoading('AI 正在计算 '+foods.length+' 种食物的营养...');
     try{
-        var foodList=foods.map(function(f,i){return (i+1)+'. '+f.name+'（'+f.amount+'）';}).join('\n');
+        var foodList=foods.map(function(f,i){return (i+1)+'. '+f.name+(f.amount?'（'+_normalizeAmount(f.amount)+'）':'');}).join('\n');
         var resp=await fetch(API_BASE_URL+'/api/analyze',{
             method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({prompt:'请估算以下每种食物的营养成分，返回JSON数组，每个元素：{"name":"食物名","amount":"份量","calories":kcal,"protein":g,"carbs":g,"fat":g}。只返回JSON数组。\n\n'+foodList})
@@ -3411,7 +3422,7 @@ function _renderDietAIResult(foods,containerId){
             var cal=_r1(f.calories),pro=_r1(f.protein),carb=_r1(f.carbs),fat=_r1(f.fat);
             totalCal+=cal;totalPro+=pro;totalCarb+=carb;totalFat+=fat;
             html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,0.04);border-radius:6px;margin-bottom:3px;font-size:12px;">'+
-                '<span style="flex:1;color:var(--text-primary);font-weight:600;">'+(f.name||'未知')+' <span style="color:var(--text-muted);">'+(f.amount||'')+'</span></span>'+
+                '<span style="flex:1;color:var(--text-primary);font-weight:600;">'+(f.name||'未知')+(f.amount?' <span style="color:var(--text-muted);">'+_normalizeAmount(f.amount)+'</span>':'')+'</span>'+
                 '<span style="color:var(--accent-orange);">'+cal+'kcal</span>'+
                 '<span style="color:var(--accent-blue);">蛋白'+pro+'g</span>'+
                 '<span style="color:var(--accent-green);">碳水'+carb+'g</span>'+
@@ -3456,7 +3467,7 @@ async function parseDietPaste(){
     try{
         var resp=await fetch(API_BASE_URL+'/api/analyze',{
             method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({prompt:'请分析以下饮食记录，识别每种食物及其份量，估算营养成分，并根据描述判断每种食物属于哪餐。返回JSON数组，每个元素：{"name":"食物名","mealType":"breakfast或lunch或dinner或snack","amount":"份量","calories":kcal,"protein":g,"carbs":g,"fat":g}。mealType取值：breakfast(早餐)、lunch(午餐)、dinner(晚餐)、snack(加餐/下午茶/夜宵)。如果无法判断餐次，默认为snack。只返回JSON数组。\n\n'+text})
+            body:JSON.stringify({prompt:'请分析以下饮食记录，识别每种食物及其份量，估算营养成分，并根据描述判断每种食物属于哪餐。返回JSON数组，每个元素：{"name":"食物名","mealType":"breakfast或lunch或dinner或snack","amount":"份量","calories":kcal,"protein":g,"carbs":g,"fat":g}。mealType取值：breakfast(早餐)、lunch(午餐)、dinner(晚餐)、snack(加餐/下午茶/夜宵)。如果无法判断餐次，默认为snack。amount格式要求：用阿拉伯数字+量词（如"2只"、"1碗"、"3块"），不要用中文数字（如"两只"、"一碗"）。同一种食物只返回一条，份量写总数（如吃了2只虾就写"2只"，不要拆成两条）。只返回JSON数组。\n\n'+text})
         });
         if(!resp.ok){
             var errBody=await resp.json().catch(function(){return {};});
@@ -3582,7 +3593,10 @@ function saveDietRecord(){
     });
     if(merged.length>0){
         merged.forEach(function(d){
-            var foodName=d.name+(d._count>1?' ×'+d._count:'')+(d.amount?' ('+d.amount+')':'');
+            var amt=d.amount?_normalizeAmount(d.amount):'';
+            var countStr=d._count>1?' ×'+d._count:'';
+            // 格式：食物名 + 份量（如有）+ 数量（如合并多条）
+            var foodName=d.name+(amt?' '+amt:'')+(countStr?' '+countStr:'');
             appData.diets.push({date:date,mealType:d.mealType,food:foodName,
                 calories:_r1(d.calories),protein:_r1(d.protein),
                 carbs:_r1(d.carbs),fat:_r1(d.fat),note:note});
