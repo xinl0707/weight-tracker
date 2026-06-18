@@ -1592,6 +1592,8 @@ function renderWeightHistory() {
 async function deleteWeightRecord(i) {
     var ok = await myConfirm('确定删除这条体重记录？');
     if(ok){
+        var rec=appData.weights[appData.weights.length-1-i];
+        addLog('delete','删除体重记录','日期:'+(rec?rec.date:'未知')+',体重:'+(rec?rec.weight:'未知')+'kg');
         appData.weights.splice(appData.weights.length-1-i,1);
         saveData(); renderWeightPage(); renderDashboard();
     }
@@ -1661,7 +1663,10 @@ async function deleteDietRecord(i) {
     if(!ok) return;
     var today=getTodayStr();
     var td=appData.diets.filter(function(d){return d.date===today;});
-    if(td[i]){var gi=appData.diets.indexOf(td[i]);if(gi>-1){appData.diets.splice(gi,1);saveData();renderDietPage();}}
+    if(td[i]){
+        addLog('delete','删除饮食记录','日期:'+today+',食物:'+td[i].food);
+        var gi=appData.diets.indexOf(td[i]);if(gi>-1){appData.diets.splice(gi,1);saveData();renderDietPage();}
+    }
 }
 
 /* ====== 运动页面 ====== */
@@ -1789,6 +1794,8 @@ function renderExerciseHistory() {
 async function deleteExerciseRecord(i) {
     var ok = await myConfirm('确定删除这条运动记录？');
     if(ok){
+        var rec=appData.exercises[appData.exercises.length-1-i];
+        addLog('delete','删除运动记录','日期:'+(rec?rec.date:'未知')+',类型:'+(rec?rec.type:'未知'));
         appData.exercises.splice(appData.exercises.length-1-i,1);
         saveData(); renderExercisePage();
     }
@@ -2480,6 +2487,7 @@ function closeMaxCoach(){
 async function clearMaxCoach(){
     var ok=await myConfirm('确定清空所有对话记录？','清空对话','⚠️');
     if(!ok) return;
+    addLog('chat','清空Max教练对话','历史消息数:'+_maxHistory.length);
     _maxHistory=[];
     appData.maxCoachHistory=[];
     saveData();
@@ -2695,6 +2703,7 @@ async function generateAIReport(type){
     var container=document.getElementById(containerId);
     var btn=document.getElementById(btnId);
     if(btn) btn.disabled=true;
+    addLog('report','生成AI报告','类型:'+type);
     container.innerHTML='<div style="text-align:center;padding:30px;"><div style="font-size:28px;margin-bottom:10px;" class="pulse">🤖</div><p style="color:var(--text-secondary);">AI 正在分析...</p></div>';
 
     var prompt=buildReportPrompt(type);
@@ -3026,6 +3035,7 @@ function saveSettings() {
     saveData();
     syncBMR();
     renderDashboard();
+    addLog('save','保存设置','昵称:'+appData.settings.name+',身高:'+appData.settings.height+'cm,目标:'+appData.settings.targetWeight+'kg');
     myAlert('设置已保存，已同步到所有设备','保存成功','✅');
 }
 // 自动计算基础代谢率（Mifflin-St Jeor 公式）
@@ -3319,6 +3329,60 @@ async function calcAllFoodItems(){
     }
     btn.disabled=false; btn.textContent='🤖 AI 统一计算所有食物';
 }
+// AI 饮食识别结果渲染（带删除按钮），供图片识别和粘贴识别共用
+function _renderDietAIResult(foods,containerId){
+    var container=document.getElementById(containerId);
+    if(!container)return;
+    var mn={breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍪 加餐'};
+    var groups={};
+    foods.forEach(function(f,i){
+        var mt=f.mealType||'snack';
+        if(!groups[mt])groups[mt]=[];
+        groups[mt].push({idx:i,data:f});
+    });
+    var html='';
+    var totalCal=0,totalPro=0,totalCarb=0,totalFat=0;
+    ['breakfast','lunch','dinner','snack'].forEach(function(mt){
+        if(!groups[mt])return;
+        html+='<div style="margin-bottom:8px;">';
+        html+='<div style="font-size:12px;color:var(--accent-blue);font-weight:600;margin:4px 0 2px;">'+mn[mt]+'</div>';
+        groups[mt].forEach(function(item){
+            var f=item.data;
+            totalCal+=f.calories||0;totalPro+=f.protein||0;totalCarb+=f.carbs||0;totalFat+=f.fat||0;
+            html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,0.04);border-radius:6px;margin-bottom:3px;font-size:12px;">'+
+                '<span style="flex:1;color:var(--text-primary);font-weight:600;">'+(f.name||'未知')+' <span style="color:var(--text-muted);">'+(f.amount||'')+'</span></span>'+
+                '<span style="color:var(--accent-orange);">'+(f.calories||0)+'kcal</span>'+
+                '<span style="color:var(--accent-blue);">蛋白'+(f.protein||0)+'g</span>'+
+                '<span style="color:var(--accent-green);">碳水'+(f.carbs||0)+'g</span>'+
+                '<span style="color:var(--accent-pink);">脂肪'+(f.fat||0)+'g</span>'+
+                '<button onclick="_removeDietAIItem('+item.idx+',\''+containerId+'\')" style="background:none;border:none;color:var(--accent-red);cursor:pointer;font-size:14px;padding:2px 4px;" title="删除">✕</button></div>';
+        });
+        html+='</div>';
+    });
+    if(foods.length>1){
+        html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(245,158,11,0.1);border-radius:6px;margin-top:4px;font-size:12px;font-weight:600;">'+
+            '<span style="flex:1;color:var(--accent-orange);">合计</span>'+
+            '<span style="color:var(--accent-orange);">🔥'+totalCal+'kcal</span>'+
+            '<span style="color:var(--accent-blue);">🥩'+totalPro+'g</span>'+
+            '<span style="color:var(--accent-green);">🌾'+totalCarb+'g</span>'+
+            '<span style="color:var(--accent-pink);">🧈'+totalFat+'g</span></div>';
+    }
+    container.innerHTML=html;
+}
+// 删除 AI 识别结果中的某一项
+function _removeDietAIItem(idx,containerId){
+    var data=recognizedDietData||_dietCalcData;
+    if(!data||idx>=data.length)return;
+    var removed=data.splice(idx,1)[0];
+    addLog('delete','删除AI识别食物','食物:'+(removed?removed.name:'未知'));
+    // 更新数据源
+    if(containerId==='diet-upload-result-data')recognizedDietData=data;
+    else _dietCalcData=data;
+    // 重新渲染
+    _renderDietAIResult(data,containerId);
+    if(containerId!=='diet-upload-result-data')updateFoodTotal();
+}
+
 // 粘贴模式：AI 识别整段文字
 async function parseDietPaste(){
     var text=document.getElementById('diet-paste-input').value.trim();
@@ -3345,30 +3409,12 @@ async function parseDietPaste(){
         foods.forEach(function(f){if(!f.mealType)f.mealType='snack';});
         _dietCalcData=foods;
         addLog('analyze','粘贴识别成功','耗时:'+Math.round((Date.now()-startTime)/1000)+'s,食物数:'+foods.length);
-        // 按餐次分组展示
-        var mn={breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍪 加餐'};
-        var groups={};
-        foods.forEach(function(f){
-            var mt=f.mealType||'snack';
-            if(!groups[mt])groups[mt]=[];
-            groups[mt].push(f);
-        });
-        var html='';
-        ['breakfast','lunch','dinner','snack'].forEach(function(mt){
-            if(!groups[mt])return;
-            html+='<div style="margin-bottom:8px;">';
-            html+='<div style="font-size:12px;color:var(--accent-blue);font-weight:600;margin:4px 0 2px;">'+mn[mt]+'</div>';
-            groups[mt].forEach(function(f){
-                html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:6px;margin-bottom:3px;font-size:12px;">'+
-                    '<span style="flex:1;color:var(--text-primary);">'+f.name+' <span style="color:var(--text-muted);">'+(f.amount||'')+'</span></span>'+
-                    '<span style="color:var(--accent-orange);">'+f.calories+'kcal</span>'+
-                    '<span style="color:var(--accent-blue);">蛋白'+f.protein+'g</span>'+
-                    '<span style="color:var(--accent-green);">碳水'+f.carbs+'g</span>'+
-                    '<span style="color:var(--accent-pink);">脂肪'+f.fat+'g</span></div>';
-            });
-            html+='</div>';
-        });
-        document.getElementById('diet-paste-results').innerHTML=html||'<p style="color:var(--text-muted);">未识别到食物</p>';
+        // 按餐次分组展示（带删除按钮）
+        if(foods.length>0){
+            _renderDietAIResult(foods,'diet-paste-results');
+        }else{
+            document.getElementById('diet-paste-results').innerHTML='<p style="color:var(--text-muted);">未识别到食物</p>';
+        }
         updateFoodTotal();
     }catch(e){
         addLog('error','粘贴识别失败','耗时:'+Math.round((Date.now()-startTime)/1000)+'s,错误:'+e.message);
@@ -3406,6 +3452,7 @@ async function saveWeightRecord(){
     var date=document.getElementById('weight-date').value;
     var weight=parseFloat(document.getElementById('weight-value').value);
     if(!date||!weight){myAlert('请至少填写日期和体重','提示','📝');return;}
+    addLog('save','保存体重记录','日期:'+date+',体重:'+weight+'kg');
     // 检测重复日期
     var existing=appData.weights.find(function(w){return w.date===date;});
     if(existing){
@@ -3464,6 +3511,7 @@ function saveDietRecord(){
         });
     }
     if(savedCount===0){myAlert('请至少填写一种食物','提示','📝');return;}
+    addLog('save','保存饮食记录','日期:'+date+',餐次:'+mealType+',数量:'+savedCount+'条');
     saveData(); closeModal('modal-record-diet');
     celebrate();
     myAlert('已保存 '+savedCount+' 种食物','保存成功','✅');
@@ -3472,10 +3520,13 @@ function saveDietRecord(){
 function saveExerciseRecord(){
     var date=document.getElementById('exercise-date').value;
     if(!date){myAlert('请填写日期','提示','📝');return;}
-    appData.exercises.push({date:date,type:document.getElementById('exercise-type').value,
-        duration:parseInt(document.getElementById('exercise-duration').value)||0,
+    var exType=document.getElementById('exercise-type').value;
+    var exDur=parseInt(document.getElementById('exercise-duration').value)||0;
+    appData.exercises.push({date:date,type:exType,
+        duration:exDur,
         calories:parseInt(document.getElementById('exercise-calories').value)||0,
         desc:document.getElementById('exercise-desc').value||''});
+    addLog('save','保存运动记录','日期:'+date+',类型:'+exType+',时长:'+exDur+'分钟');
     saveData(); closeModal('modal-record-exercise');
     renderExercisePage();
 }
@@ -3654,27 +3705,8 @@ async function recognizeDietImage(b64){
         }
         if(foods.length===0)throw new Error('未识别到食物');
         recognizedDietData=foods;
-        // 展示识别结果
-        var html='';
-        var totalCal=0,totalPro=0,totalCarb=0,totalFat=0;
-        foods.forEach(function(f){
-            totalCal+=f.calories||0;totalPro+=f.protein||0;totalCarb+=f.carbs||0;totalFat+=f.fat||0;
-            html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,0.04);border-radius:6px;margin-bottom:4px;font-size:12px;">'+
-                '<span style="flex:1;color:var(--text-primary);font-weight:600;">'+(f.name||'未知')+'</span>'+
-                '<span style="color:var(--accent-orange);">🔥'+(f.calories||0)+'kcal</span>'+
-                '<span style="color:var(--accent-blue);">🥩'+(f.protein||0)+'g</span>'+
-                '<span style="color:var(--accent-green);">🌾'+(f.carbs||0)+'g</span>'+
-                '<span style="color:var(--accent-pink);">🧈'+(f.fat||0)+'g</span></div>';
-        });
-        if(foods.length>1){
-            html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(245,158,11,0.1);border-radius:6px;margin-top:4px;font-size:12px;font-weight:600;">'+
-                '<span style="flex:1;color:var(--accent-orange);">合计</span>'+
-                '<span style="color:var(--accent-orange);">🔥'+totalCal+'kcal</span>'+
-                '<span style="color:var(--accent-blue);">🥩'+totalPro+'g</span>'+
-                '<span style="color:var(--accent-green);">🌾'+totalCarb+'g</span>'+
-                '<span style="color:var(--accent-pink);">🧈'+totalFat+'g</span></div>';
-        }
-        document.getElementById('diet-upload-result-data').innerHTML=html;
+        // 展示识别结果（带删除按钮）
+        _renderDietAIResult(foods,'diet-upload-result-data');
         hideAILoading();
         document.getElementById('diet-upload-result').style.display='block';
         document.getElementById('diet-upload-fallback').style.display='none';

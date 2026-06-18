@@ -164,8 +164,8 @@ function callMiMO(messages, timeout) {
                         reject(new Error('AI 未返回有效内容'));
                         return;
                     }
-                    // 尝试提取 JSON
-                    var jsonMatch = content.match(/\{[\s\S]*\}/);
+                    // 尝试提取 JSON（支持对象 {...} 和数组 [...]）
+                    var jsonMatch = content.match(/\[[\s\S]*\]/) || content.match(/\{[\s\S]*\}/);
                     if (jsonMatch) {
                         try { resolve(JSON.parse(jsonMatch[0])); }
                         catch(e) { resolve({ text: content }); }

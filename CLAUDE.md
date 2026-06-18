@@ -112,3 +112,12 @@ node proxy-server.js
 - **新问题即记录**：用户提出的每一个新问题、新需求、新 bug，无论是否立即处理，都必须写入对应优先级部分
 - **修改即检查**：每次代码修改、每次提交后，都要检查 `unfinished-bug.md` 是否需要更新状态
 - **编号规则**：A=功能需求，B=高优先级重构/bug，C=中优先级改进，D=低优先级/体验优化。无编号的用 `—` 表示
+
+## 日志系统规则（appData.appLogs）
+
+`appData.appLogs` 记录所有用户操作和系统事件，支持多端同步，最多保留 200 条。
+
+- **排障优先查日志**：当用户报告问题时，必须先查阅 `appData.appLogs`，根据日志时间和错误信息定位原因，不要凭猜测诊断
+- **查阅方式**：在浏览器控制台执行 `JSON.parse(localStorage.getItem('weight-tracker-data')).appLogs.slice(-20)` 或通过 `addLog` / `getRecentLogs()` 函数
+- **日志类型**：`save`（保存操作）、`delete`（删除操作）、`recognize`（图片识别）、`analyze`（文本分析）、`report`（AI报告）、`chat`（Max教练）、`error`（错误）、`sync`（数据同步）
+- **全操作覆盖**：所有用户可触发的操作（保存/删除/识别/分析/设置/同步）都必须有对应的 `addLog()` 调用
