@@ -1664,17 +1664,38 @@ function renderDietPage() {
     var lc=document.getElementById('diet-today-list');
     if(td.length===0){lc.innerHTML=emptyState('今天还没有饮食记录');}
     else{
-        lc.innerHTML=td.map(function(d,i){
-            var nutrientLine=_r1(d.calories)+'kcal';
-            if(d.protein) nutrientLine+=' | 🥩蛋白'+_r1(d.protein)+'g';
-            if(d.carbs) nutrientLine+=' | 🌾碳水'+_r1(d.carbs)+'g';
-            if(d.fat) nutrientLine+=' | 🧈脂肪'+_r1(d.fat)+'g';
-            return '<div class="list-item"><div class="list-item-left">'+
-                '<div class="list-item-icon" style="background:rgba(16,185,129,0.15);">'+(mn[d.mealType]?mn[d.mealType].split(' ')[0]:'🍽️')+'</div>'+
-                '<div class="list-item-text"><h4>'+(mn[d.mealType]||d.mealType)+': '+d.food+'</h4>'+
-                '<p style="font-size:12px;">'+nutrientLine+'</p></div></div>'+
-                '<button class="btn btn-danger btn-sm btn-icon" onclick="deleteDietRecord('+i+')">🗑️</button></div>';
-        }).join('');
+        // 按餐次分组
+        var groups={};
+        td.forEach(function(d,i){
+            var mt=d.mealType||'other';
+            if(!groups[mt])groups[mt]=[];
+            groups[mt].push({data:d,idx:i});
+        });
+        var mealOrder=['breakfast','lunch','dinner','snack','other'];
+        var html='';
+        mealOrder.forEach(function(mt){
+            if(!groups[mt])return;
+            var items=groups[mt];
+            var mealCal=_r1(items.reduce(function(s,it){return s+(it.data.calories||0);},0));
+            var icon=mn[mt]?mn[mt].split(' ')[0]:'🍽️';
+            var label=mn[mt]||mt;
+            html+='<div style="margin-bottom:12px;">';
+            html+='<div style="display:flex;align-items:center;gap:6px;padding:6px 0;font-size:13px;font-weight:600;color:var(--accent-blue);">'+icon+' '+label+' <span style="font-weight:400;color:var(--text-muted);font-size:12px;">合计 '+mealCal+'kcal</span></div>';
+            items.forEach(function(it,j){
+                var d=it.data;
+                var nutrientLine=_r1(d.calories)+'kcal';
+                if(d.protein) nutrientLine+=' | 🥩蛋白'+_r1(d.protein)+'g';
+                if(d.carbs) nutrientLine+=' | 🌾碳水'+_r1(d.carbs)+'g';
+                if(d.fat) nutrientLine+=' | 🧈脂肪'+_r1(d.fat)+'g';
+                var isLast=j===items.length-1;
+                html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 8px 6px 20px;background:rgba(255,255,255,0.02);border-radius:6px;margin-bottom:2px;">'+
+                    '<span style="flex:1;font-size:13px;color:var(--text-primary);">'+d.food+'</span>'+
+                    '<span style="font-size:12px;color:var(--text-muted);">'+nutrientLine+'</span>'+
+                    '<button class="btn btn-danger btn-sm btn-icon" style="padding:2px 6px;font-size:11px;" onclick="deleteDietRecord('+it.idx+')">🗑️</button></div>';
+            });
+            html+='</div>';
+        });
+        lc.innerHTML=html;
     }
     renderCaloriesChart();
 }
@@ -2830,15 +2851,18 @@ function renderDailyReport() {
         '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="color:var(--text-secondary);">热量目标</span><strong>'+appData.settings.calorieTarget+' kcal</strong></div>'+
         '<div style="display:flex;justify-content:space-between;padding:8px 0;"><span style="color:var(--text-secondary);">运动次数</span><strong>'+te.length+' 次</strong></div>';
 
-    // 今日饮食明细
+    // 今日饮食明细（按餐次合并）
     if(td.length>0){
         summaryHtml+='<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);"><div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">🍽️ 今日饮食</div>';
-        td.forEach(function(d){
-            var nutrient=_r1(d.calories)+'kcal';
-            if(d.protein) nutrient+=' | 蛋白'+_r1(d.protein)+'g';
-            if(d.carbs) nutrient+=' | 碳水'+_r1(d.carbs)+'g';
-            if(d.fat) nutrient+=' | 脂肪'+_r1(d.fat)+'g';
-            summaryHtml+='<div style="font-size:12px;padding:3px 0;color:var(--text-secondary);">• '+(mn[d.mealType]||'')+': '+d.food+' <span style="color:var(--text-muted);">'+nutrient+'</span></div>';
+        var dietGroups={};
+        td.forEach(function(d){var mt=d.mealType||'other';if(!dietGroups[mt])dietGroups[mt]=[];dietGroups[mt].push(d);});
+        var mealOrder2=['breakfast','lunch','dinner','snack','other'];
+        mealOrder2.forEach(function(mt){
+            if(!dietGroups[mt])return;
+            var items=dietGroups[mt];
+            var mealCal=_r1(items.reduce(function(s,d){return s+(d.calories||0);},0));
+            var foodList=items.map(function(d){return d.food+'('+_r1(d.calories)+'kcal)';}).join(', ');
+            summaryHtml+='<div style="font-size:12px;padding:3px 0;color:var(--text-secondary);">'+(mn[mt]||mt)+': '+foodList+' — <span style="color:var(--accent-orange);">共'+mealCal+'kcal</span></div>';
         });
         summaryHtml+='</div>';
     }
