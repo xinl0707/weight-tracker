@@ -159,9 +159,20 @@ function callMiMO(messages, timeout) {
                         reject(new Error(json.error.message || JSON.stringify(json.error)));
                         return;
                     }
-                    var content = json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
+                    var choice = json.choices && json.choices[0];
+                    var msg = choice && choice.message;
+                    var content = msg && (msg.content || msg.reasoning_content || '');
+                    // 如果 content 为空，尝试从 refusal 或 tool_calls 中提取
+                    if (!content && msg && msg.refusal) content = msg.refusal;
                     if (!content) {
-                        reject(new Error('AI 未返回有效内容'));
+                        // 详细日志：记录 MiMO 返回的完整结构，便于排查
+                        console.error('  X_X AI 未返回有效内容:');
+                        console.error('    finish_reason:', choice && choice.finish_reason);
+                        console.error('    message keys:', msg ? Object.keys(msg) : 'N/A');
+                        console.error('    raw content:', JSON.stringify(content));
+                        console.error('    full choice:', JSON.stringify(choice).slice(0, 500));
+                        console.error('    full response:', JSON.stringify(json).slice(0, 1000));
+                        reject(new Error('AI 未返回有效内容 (reason:' + (choice && choice.finish_reason || 'unknown') + ')'));
                         return;
                     }
                     // 尝试提取 JSON（支持对象 {...} 和数组 [...]）
