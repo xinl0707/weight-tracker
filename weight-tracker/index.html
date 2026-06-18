@@ -3562,14 +3562,31 @@ function saveDietRecord(){
     if(!date){myAlert('请填写日期','提示','📝');return;}
     var savedCount=0;
     // 从 _dietCalcData 保存（逐条模式或粘贴模式共用）
-    if(_dietCalcData.length>0){
-        _dietCalcData.forEach(function(d){
-            if(d.name){
-                appData.diets.push({date:date,mealType:d.mealType||mealType,food:d.name,
-                    calories:_r1(d.calories),protein:_r1(d.protein),
-                    carbs:_r1(d.carbs),fat:_r1(d.fat),note:note});
-                savedCount++;
-            }
+    // 先合并同名同餐次的食物（AI可能把"两只虾"拆成两条）
+    var merged=[];
+    _dietCalcData.forEach(function(d){
+        if(!d.name)return;
+        var key=d.name+'|'+(d.mealType||mealType);
+        var existing=merged.find(function(m){return m._key===key;});
+        if(existing){
+            existing.calories+=d.calories||0;
+            existing.protein+=d.protein||0;
+            existing.carbs+=d.carbs||0;
+            existing.fat+=d.fat||0;
+            existing._count++;
+        }else{
+            merged.push({_key:key,name:d.name,mealType:d.mealType||mealType,
+                amount:d.amount||'',calories:d.calories||0,protein:d.protein||0,
+                carbs:d.carbs||0,fat:d.fat||0,_count:1});
+        }
+    });
+    if(merged.length>0){
+        merged.forEach(function(d){
+            var foodName=d.name+(d._count>1?' ×'+d._count:'')+(d.amount?' ('+d.amount+')':'');
+            appData.diets.push({date:date,mealType:d.mealType,food:foodName,
+                calories:_r1(d.calories),protein:_r1(d.protein),
+                carbs:_r1(d.carbs),fat:_r1(d.fat),note:note});
+            savedCount++;
         });
     }
     // 兜底：如果 _dietCalcData 为空，尝试从 DOM 读取
