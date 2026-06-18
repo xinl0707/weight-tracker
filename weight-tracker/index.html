@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=overlays-content">
     <title>减重计划</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
@@ -25,7 +25,7 @@
             --shadow: 0 4px 24px rgba(0,0,0,0.3);
             --radius: 16px;
             --radius-sm: 10px;
-            --transition: all 0.3s ease;
+            --transition: opacity 0.3s ease, transform 0.3s ease;
         }
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
@@ -33,7 +33,10 @@
             background: var(--bg-primary);
             color: var(--text-primary);
             min-height: 100vh;
+            overscroll-behavior: contain;
+            -webkit-tap-highlight-color: transparent;
         }
+        input, select, textarea, button { font-size: 16px; /* 防止 iOS 缩放 */ }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 3px; }
 
@@ -93,8 +96,9 @@
             background: var(--bg-card); border-radius: var(--radius);
             padding: 24px; border: 1px solid rgba(255,255,255,0.04);
             transition: var(--transition);
+            content-visibility: auto; contain-intrinsic-size: auto 200px;
         }
-        .card:hover { border-color: rgba(59,130,246,0.15); }
+        @media (hover: hover) { .card:hover { border-color: rgba(59,130,246,0.15); } }
         .card-title {
             font-size: 16px; font-weight: 600; margin-bottom: 16px;
             display: flex; align-items: center; gap: 8px;
@@ -206,16 +210,19 @@
         /* 模态框 */
         .modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-            backdrop-filter: blur(4px); z-index: 200;
+            z-index: 200;
             display: flex; align-items: center; justify-content: center;
             opacity: 0; pointer-events: none; transition: var(--transition);
         }
+        @media (min-width: 768px) { .modal-overlay { backdrop-filter: blur(4px); } }
         .modal-overlay.active { opacity: 1; pointer-events: all; }
         .modal {
             background: var(--bg-card); border-radius: var(--radius); padding: 28px;
-            width: 90%; max-width: 500px; max-height: 85vh; overflow-y: auto;
+            width: 90%; max-width: 500px; max-height: 80dvh; overflow-y: auto;
             box-shadow: 0 8px 40px rgba(0,0,0,0.4);
             transform: translateY(20px); transition: var(--transition);
+            -webkit-overflow-scrolling: touch;
+            will-change: transform;
         }
         .modal-overlay.active .modal { transform: translateY(0); }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
@@ -284,14 +291,19 @@
         @keyframes confettiFall { 0%{transform:translateY(-10px) rotate(0deg);opacity:1;} 100%{transform:translateY(100vh) rotate(720deg);opacity:0;} }
         @keyframes glow { 0%,100%{box-shadow:0 0 5px rgba(59,130,246,0.3);} 50%{box-shadow:0 0 20px rgba(59,130,246,0.6);} }
         .fade-in { animation: fadeIn 0.4s ease; }
-        .page { display: none; }
-        .page.active { display: block; animation: fadeInUp 0.35s ease; }
+        .page { display: none; contain: layout style; }
+        .page.active { display: block; contain: layout style paint; }
+        @media (prefers-reduced-motion: no-preference) {
+            .page.active { animation: fadeInUp 0.35s ease; }
+        }
         .card { transition: all 0.3s ease; }
-        .card:hover { transform:translateY(-2px); box-shadow:0 8px 32px rgba(0,0,0,0.3); }
+        @media (hover: hover) {
+            .card:hover { transform:translateY(-2px); box-shadow:0 8px 32px rgba(0,0,0,0.3); }
+        }
         .btn { transition: all 0.2s ease; }
         .btn:active { transform:scale(0.96); }
         .stat-card { transition: all 0.3s ease; }
-        .stat-card:hover { transform:translateY(-2px); }
+        @media (hover: hover) { .stat-card:hover { transform:translateY(-2px); } }
         /* 庆祝粒子 */
         .confetti-piece { position:fixed; top:-10px; width:10px; height:10px; z-index:9999; pointer-events:none; animation:confettiFall 3s ease-in forwards; }
 
@@ -352,7 +364,7 @@
         /* ====== 自定义弹窗 ====== */
         .toast-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-            backdrop-filter: blur(4px); z-index: 999;
+            z-index: 999;
             display: flex; align-items: center; justify-content: center;
             opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
         }
@@ -1248,7 +1260,7 @@ function showAILoading(msg,showTimer,type){
     }
     var div=document.createElement('div');
     div.id='ai-loading-overlay';
-    div.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);z-index:998;display:flex;align-items:center;justify-content:center;';
+    div.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:998;display:flex;align-items:center;justify-content:center;';
     div.innerHTML='<div style="background:var(--bg-card);border-radius:16px;padding:28px 36px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.4);">'+
         '<div style="font-size:36px;margin-bottom:12px;" class="pulse">🤖</div>'+
         '<div style="color:var(--text-primary);font-size:15px;font-weight:500;margin-bottom:8px;">'+(msg||'AI 处理中...')+'</div>'+
