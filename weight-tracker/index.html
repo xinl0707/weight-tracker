@@ -3403,6 +3403,7 @@ async function parseDietPaste(){
         }
         var result=await resp.json();
         var content=result.content||'[]';
+        addLog('analyze','API返回内容','长度:'+content.length+',前100字:'+content.slice(0,100));
         var match=content.match(/\[[\s\S]*?\]/);
         var foods=match?JSON.parse(match[0]):[];
         // 兼容：如果 AI 没返回 mealType，默认 snack

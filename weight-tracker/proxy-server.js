@@ -545,8 +545,9 @@ var server = http.createServer(function(req, res) {
             return callMiMO(messages, 60000);
         }).then(function(result) {
             if (result) {
-                console.log('  ^_^ 分析完成');
-                sendJSON(res, 200, { content: result.text || JSON.stringify(result) });
+                var content = result.text || JSON.stringify(result);
+                console.log('  ^_^ 分析完成, 返回内容长度:', content.length, '前200字:', content.slice(0, 200));
+                sendJSON(res, 200, { content: content });
             }
         }).catch(function(err) {
             console.error('  X_X 分析失败:', err.message);
