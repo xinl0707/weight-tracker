@@ -3353,19 +3353,21 @@ async function calcAllFoodItems(){
 function _renderDietAIResult(foods,containerId){
     var container=document.getElementById(containerId);
     if(!container)return;
-    var mn={breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍪 加餐'};
+    var mn={breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍪 加餐',unknown:'🍽️'};
     var groups={};
     foods.forEach(function(f,i){
-        var mt=f.mealType||'snack';
+        var mt=f.mealType||'unknown';
         if(!groups[mt])groups[mt]=[];
         groups[mt].push({idx:i,data:f});
     });
     var html='';
     var totalCal=0,totalPro=0,totalCarb=0,totalFat=0;
-    ['breakfast','lunch','dinner','snack'].forEach(function(mt){
+    // 无餐次的放最前面，有餐次的按早/午/晚/加餐排序
+    var order=['unknown','breakfast','lunch','dinner','snack'];
+    order.forEach(function(mt){
         if(!groups[mt])return;
         html+='<div style="margin-bottom:8px;">';
-        html+='<div style="font-size:12px;color:var(--accent-blue);font-weight:600;margin:4px 0 2px;">'+mn[mt]+'</div>';
+        if(mt!=='unknown') html+='<div style="font-size:12px;color:var(--accent-blue);font-weight:600;margin:4px 0 2px;">'+mn[mt]+'</div>';
         groups[mt].forEach(function(item){
             var f=item.data;
             var cal=_r1(f.calories),pro=_r1(f.protein),carb=_r1(f.carbs),fat=_r1(f.fat);
