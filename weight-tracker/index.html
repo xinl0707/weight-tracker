@@ -1702,10 +1702,14 @@ async function deleteDietRecord(i) {
     var ok = await myConfirm('确定删除这条饮食记录？');
     if(!ok) return;
     var today=getTodayStr();
-    var td=appData.diets.filter(function(d){return d.date===today;});
-    if(td[i]){
-        addLog('delete','删除饮食记录','日期:'+today+',食物:'+td[i].food);
-        var gi=appData.diets.indexOf(td[i]);if(gi>-1){appData.diets.splice(gi,1);saveData();renderDietPage();}
+    // 用全局索引定位，避免 indexOf 找到重复项的第一条
+    var globalIdx=-1,count=-1;
+    for(var j=0;j<appData.diets.length;j++){
+        if(appData.diets[j].date===today){count++;if(count===i){globalIdx=j;break;}}
+    }
+    if(globalIdx>-1){
+        addLog('delete','删除饮食记录','日期:'+today+',食物:'+appData.diets[globalIdx].food);
+        appData.diets.splice(globalIdx,1);saveData();renderDietPage();
     }
 }
 
