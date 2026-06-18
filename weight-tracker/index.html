@@ -1677,10 +1677,9 @@ function renderDietPage() {
             if(!groups[mt])return;
             var items=groups[mt];
             var mealCal=_r1(items.reduce(function(s,it){return s+(it.data.calories||0);},0));
-            var icon=mn[mt]?mn[mt].split(' ')[0]:'🍽️';
-            var label=mn[mt]||mt;
+            var label=mn[mt]||('🍽️ '+mt);
             html+='<div style="margin-bottom:12px;">';
-            html+='<div style="display:flex;align-items:center;gap:6px;padding:6px 0;font-size:13px;font-weight:600;color:var(--accent-blue);">'+icon+' '+label+' <span style="font-weight:400;color:var(--text-muted);font-size:12px;">合计 '+mealCal+'kcal</span></div>';
+            html+='<div style="display:flex;align-items:center;gap:6px;padding:6px 0;font-size:13px;font-weight:600;color:var(--accent-blue);">'+label+' <span style="font-weight:400;color:var(--text-muted);font-size:12px;">合计 '+mealCal+'kcal</span></div>';
             items.forEach(function(it,j){
                 var d=it.data;
                 var nutrientLine=_r1(d.calories)+'kcal';
@@ -2853,7 +2852,8 @@ function renderDailyReport() {
 
     // 今日饮食明细（按餐次合并）
     if(td.length>0){
-        summaryHtml+='<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);"><div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">🍽️ 今日饮食</div>';
+        summaryHtml+='<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);">';
+        summaryHtml+='<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">🍽️ 今日饮食</div>';
         var dietGroups={};
         td.forEach(function(d){var mt=d.mealType||'other';if(!dietGroups[mt])dietGroups[mt]=[];dietGroups[mt].push(d);});
         var mealOrder2=['breakfast','lunch','dinner','snack','other'];
@@ -2861,8 +2861,13 @@ function renderDailyReport() {
             if(!dietGroups[mt])return;
             var items=dietGroups[mt];
             var mealCal=_r1(items.reduce(function(s,d){return s+(d.calories||0);},0));
-            var foodList=items.map(function(d){return d.food+'('+_r1(d.calories)+'kcal)';}).join(', ');
-            summaryHtml+='<div style="font-size:12px;padding:3px 0;color:var(--text-secondary);">'+(mn[mt]||mt)+': '+foodList+' — <span style="color:var(--accent-orange);">共'+mealCal+'kcal</span></div>';
+            var mealLabel=mn[mt]||('🍽️ '+mt);
+            summaryHtml+='<div style="margin-bottom:6px;">';
+            summaryHtml+='<div style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:2px;">'+mealLabel+' <span style="font-weight:400;color:var(--accent-orange);">'+mealCal+'kcal</span></div>';
+            items.forEach(function(d){
+                summaryHtml+='<div style="font-size:11px;color:var(--text-muted);padding-left:12px;">• '+d.food+' '+_r1(d.calories)+'kcal</div>';
+            });
+            summaryHtml+='</div>';
         });
         summaryHtml+='</div>';
     }
