@@ -2106,10 +2106,15 @@ function generateFinalPlan(){
         WEEKLY_PLAN[key]={name:icon+' '+name,icon:icon,items:items};
     });
     saveData();
-    renderExercisePage();
+    // 分步执行，避免同一帧内弹窗关闭+重渲染+弹窗+礼花导致闪屏
     closeAIPlanner();
-    myAlert('AI 生成的计划已成功导入！','导入成功','✅');
-    celebrate();
+    setTimeout(function(){
+        renderExercisePage();
+        setTimeout(function(){
+            myAlert('AI 生成的计划已成功导入！','导入成功','✅');
+            celebrate();
+        },350);
+    },300);
 }
 
 /* ====== 报告页面 ====== */
